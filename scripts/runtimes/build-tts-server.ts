@@ -76,7 +76,7 @@ async function main() {
   );
   const localSources = await Promise.all(
     ttsServerSourceFiles.map(async (name) => {
-      const path = join(workspace, "scripts/tts-server", name);
+      const path = join(workspace, "scripts/runtimes/tts-server", name);
       const bytes = new Uint8Array(await Bun.file(path).arrayBuffer());
       await Bun.write(join(sourcePath, "tools/tts-server", name), bytes);
       return { name, sha256: await sha256(bytes) };

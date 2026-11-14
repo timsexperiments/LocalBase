@@ -43,13 +43,13 @@ jobs:
         env:
           RUNTIME_TAG: ${{ inputs.runtime_tag }}
         run: >-
-          bun run scripts/tts-release.ts validate-tag --tag "$RUNTIME_TAG"
+          bun run scripts/runtimes/tts-release.ts validate-tag --tag "$RUNTIME_TAG"
           --github-output "$GITHUB_OUTPUT"
       - name: Verify published release and write immutable receipt
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: >-
-          bun run scripts/tts-release.ts verify-published-release
+          bun run scripts/runtimes/tts-release.ts verify-published-release
           --repository "$GITHUB_REPOSITORY" --tag "${{ steps.runtime.outputs.tag }}"
           --output "$RUNNER_TEMP/tts-server-release-receipt.json"
       - name: Reconcile manifest branch from current default branch
@@ -73,10 +73,10 @@ jobs:
           git switch --create "$MANIFEST_BRANCH" "origin/$BASE_BRANCH"
       - name: Update and verify only tts-server manifest entries
         run: |
-          bun run scripts/tts-release.ts update-manifest \
+          bun run scripts/runtimes/tts-release.ts update-manifest \
             --manifest src/manager/managed-runtime-manifest.json \
             --receipt "$RUNNER_TEMP/tts-server-release-receipt.json"
-          bun run scripts/tts-release.ts verify-manifest \
+          bun run scripts/runtimes/tts-release.ts verify-manifest \
             --manifest src/manager/managed-runtime-manifest.json \
             --receipt "$RUNNER_TEMP/tts-server-release-receipt.json"
       - name: Commit manifest update

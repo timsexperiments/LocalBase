@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { gzipSync, zipSync } from "fflate";
 import { pack as createTarPack } from "tar-stream";
-import rawManifest from "../src/manager/managed-runtime-manifest.json";
+import rawManifest from "../../src/manager/managed-runtime-manifest.json";
 import {
   validateSdArchiveEntries,
   validateSdBinaryArchitecture,

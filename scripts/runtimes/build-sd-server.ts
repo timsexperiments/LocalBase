@@ -123,7 +123,7 @@ async function main() {
     "precompiled-metal-library.patch",
   ].map((name) => ({
     name,
-    path: join(workspace, "scripts/sd-patches", name),
+    path: join(workspace, "scripts/runtimes/sd-patches", name),
   }));
   await $`git -C ${sourcePath} init --quiet`;
   for (const patch of patches) {
@@ -133,7 +133,7 @@ async function main() {
 
   const parserTest = join(
     workspace,
-    "scripts/sd-patches/inline-wav-audio.test.cpp",
+    "scripts/runtimes/sd-patches/inline-wav-audio.test.cpp",
   );
   const parserTestBinary = join(root, "inline-wav-audio-test");
   await $`c++ -std=c++17 -Wall -Wextra -Werror -I${join(sourcePath, "include")} -I${join(sourcePath, "examples")} -I${join(sourcePath, "examples/server")} -I${join(sourcePath, "thirdparty")} ${join(sourcePath, "examples/server/inline_wav.cpp")} ${parserTest} -o ${parserTestBinary}`;
@@ -141,7 +141,7 @@ async function main() {
 
   const gpuPciTest = join(
     workspace,
-    "scripts/sd-patches/require-gpu-pci.test.cpp",
+    "scripts/runtimes/sd-patches/require-gpu-pci.test.cpp",
   );
   const gpuPciTestBinary = join(root, "require-gpu-pci-test");
   await $`c++ -std=c++17 -Wall -Wextra -Werror -I${join(sourcePath, "include")} -I${join(sourcePath, "examples/common")} -I${join(sourcePath, "ggml/include")} ${gpuPciTest} -o ${gpuPciTestBinary}`;
@@ -163,7 +163,7 @@ async function main() {
   if (!(await Bun.file(binary).exists())) {
     throw new Error("The native build completed without sd-server.");
   }
-  await $`bun ${join(workspace, "scripts/sd-gpu-pci-contract.ts")} --binary ${binary}`;
+  await $`bun ${join(workspace, "scripts/runtimes/sd-gpu-pci-contract.ts")} --binary ${binary}`;
   await Bun.write(join(root, "sd-server"), Bun.file(binary));
   await $`chmod +x ${join(root, "sd-server")}`;
 
@@ -178,7 +178,7 @@ async function main() {
     ],
     [join(sourcePath, "thirdparty/oniguruma/COPYING"), "LICENSE.oniguruma.txt"],
     [
-      join(workspace, "scripts/sd-licenses/LICENSE.nlohmann-json.txt"),
+      join(workspace, "scripts/runtimes/sd-licenses/LICENSE.nlohmann-json.txt"),
       "LICENSE.nlohmann-json.txt",
     ],
     [

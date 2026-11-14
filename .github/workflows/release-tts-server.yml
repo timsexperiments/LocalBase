@@ -5,12 +5,12 @@ on:
     paths:
       - .github/workflows/release-tts-server.yml
       - .github/workflows/sync-tts-server-manifest.yml
-      - scripts/build-tts-server.ts
-      - scripts/tts-release.ts
-      - scripts/tts-release.test.ts
-      - scripts/tts-release/**
-      - scripts/tts-server/**
-      - scripts/sd-release/archive-reader.ts
+      - scripts/runtimes/build-tts-server.ts
+      - scripts/runtimes/tts-release.ts
+      - scripts/runtimes/tts-release.test.ts
+      - scripts/runtimes/tts-release/**
+      - scripts/runtimes/tts-server/**
+      - scripts/runtimes/sd-release/archive-reader.ts
   workflow_dispatch:
     inputs:
       runtime_tag:
@@ -36,14 +36,14 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
-      - run: bun test ./scripts/tts-release.test.ts
+      - run: bun test ./scripts/runtimes/tts-release.test.ts
       - name: Validate unpublished release tag
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run scripts/tts-release.ts validate-tag --tag "$RUNTIME_TAG"
-          bun run scripts/tts-release.ts assert-release-available \
+          bun run scripts/runtimes/tts-release.ts validate-tag --tag "$RUNTIME_TAG"
+          bun run scripts/runtimes/tts-release.ts assert-release-available \
             --repository "$GITHUB_REPOSITORY" --tag "$RUNTIME_TAG"
 
   linux-x64:
@@ -63,7 +63,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake libvulkan-dev glslc spirv-headers
       - name: Build verified llama.cpp source with tts-server
-        run: bun run scripts/build-tts-server.ts
+        run: bun run scripts/runtimes/build-tts-server.ts
       - name: Verify Vulkan configuration and runtime linkage
         run: |
           grep -Fxq 'GGML_NATIVE:BOOL=OFF' build-tts-server/build/CMakeCache.txt
@@ -81,7 +81,7 @@ jobs:
             tts-server SOURCE.tts-server.json \
             LICENSE.llama.cpp.txt LICENSE.cpp-httplib.txt LICENSE.nlohmann-json.txt
           mkdir -p "$RUNNER_TEMP/tts-linux-x64"
-          bun run scripts/tts-release.ts qualify-archive \
+          bun run scripts/runtimes/tts-release.ts qualify-archive \
             --target linux-x64 --archive tts-server-linux-x64.tar.gz \
             --work-directory "$RUNNER_TEMP/tts-linux-x64"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -106,7 +106,7 @@ jobs:
       - name: Build verified llama.cpp source with tts-server
         env:
           MACOSX_DEPLOYMENT_TARGET: "14.0"
-        run: bun run scripts/build-tts-server.ts
+        run: bun run scripts/runtimes/build-tts-server.ts
       - name: Runs on macOS 14 and later
         run: |
           minos="$(vtool -show-build build-tts-server/tts-server | awk '/minos/ {print $2}')"
@@ -130,7 +130,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         run: |
           mkdir -p "$RUNNER_TEMP/tts-macos-arm64"
-          bun run scripts/tts-release.ts qualify-archive \
+          bun run scripts/runtimes/tts-release.ts qualify-archive \
             --target macos-arm64 --archive tts-server-macos-arm64.zip \
             --work-directory "$RUNNER_TEMP/tts-macos-arm64"
       - name: Keep the unsigned archive for signing
@@ -218,7 +218,7 @@ jobs:
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: >-
-          bun run scripts/tts-release.ts qualify-archive
+          bun run scripts/runtimes/tts-release.ts qualify-archive
           --target macos-arm64 --archive tts-server-macos-arm64.zip
           --work-directory "$RUNNER_TEMP/tts-macos-arm64" --team-id "$TEAM_ID"
       - name: Keep the qualified archive

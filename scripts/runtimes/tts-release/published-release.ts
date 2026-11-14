@@ -1,25 +1,26 @@
 import { z } from "zod";
-import { parseChecksumFile } from "../../src/utils/checksum";
-import { readSdArchiveEntries } from "./archive-reader";
+import { parseChecksumFile } from "../../../src/utils/checksum";
+import { readSdArchiveEntries } from "../sd-release/archive-reader";
 import {
   archiveSpecification,
   expectedDownloadUrl,
   filePathSchema,
   repositorySchema,
   safeFilenameSchema,
-  sdPublicationTargetSchema,
-  sdReleaseReceiptSchema,
   sourceIdentitySchema,
-  validateSdReleaseTag,
+  ttsPublicationTargetSchema,
+  ttsReleaseReceiptSchema,
+  ttsSourceProvenanceSchema,
+  validateTtsReleaseTag,
   type Fetcher,
-  type SdReleaseReceipt,
+  type TtsReleaseReceipt,
 } from "./contracts";
 
 const expectedAssetNames = [
   "checksums.txt",
-  "SOURCE.sd-server.json",
-  "sd-server-linux-x64.tar.gz",
-  "sd-server-macos-arm64.zip",
+  "SOURCE.tts-server.json",
+  "tts-server-linux-x64.tar.gz",
+  "tts-server-macos-arm64.zip",
 ] as const;
 
 const githubAssetSchema = z
@@ -78,13 +79,14 @@ async function download(
   return bytes;
 }
 
-export async function assertSdReleaseAvailable(
+/** Fails when the tag already has a release or a git ref; tags are never moved. */
+export async function assertTtsReleaseAvailable(
   repositoryInput: unknown,
   tagInput: unknown,
   fetcher: Fetcher = fetch,
 ): Promise<void> {
   const repository = repositorySchema.parse(repositoryInput);
-  const tag = validateSdReleaseTag(tagInput);
+  const tag = validateTtsReleaseTag(tagInput);
   for (const url of [
     `${apiBaseUrl()}/repos/${repository}/releases/tags/${encodeURIComponent(tag)}`,
     `${apiBaseUrl()}/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`,
@@ -96,19 +98,19 @@ export async function assertSdReleaseAvailable(
         `GitHub immutable release check failed: HTTP ${response.status}.`,
       );
     throw new Error(
-      `sd-server release tag ${tag} already exists and cannot be republished.`,
+      `tts-server release tag ${tag} already exists and cannot be republished.`,
     );
   }
 }
 
-export async function verifyPublishedSdRelease(
+export async function verifyPublishedTtsRelease(
   repositoryInput: unknown,
   tagInput: unknown,
   outputPathInput: unknown,
   fetcher: Fetcher = fetch,
-): Promise<SdReleaseReceipt> {
+): Promise<TtsReleaseReceipt> {
   const repository = repositorySchema.parse(repositoryInput);
-  const tag = validateSdReleaseTag(tagInput);
+  const tag = validateTtsReleaseTag(tagInput);
   const outputPath = filePathSchema.parse(outputPathInput);
   const response = await fetcher(
     `${apiBaseUrl()}/repos/${repository}/releases/tags/${encodeURIComponent(tag)}`,
@@ -127,7 +129,7 @@ export async function verifyPublishedSdRelease(
     JSON.stringify(names) !== JSON.stringify([...expectedAssetNames].sort())
   ) {
     throw new Error(
-      "Published release must contain exactly the canonical sd-server assets.",
+      "Published release must contain exactly the canonical tts-server assets.",
     );
   }
   const assets = new Map(release.assets.map((asset) => [asset.name, asset]));
@@ -142,7 +144,7 @@ export async function verifyPublishedSdRelease(
 
   const checksumBytes = await download(assets.get("checksums.txt")!, fetcher);
   const checksums = parseChecksumFile(new TextDecoder().decode(checksumBytes));
-  const checkedNames = sdPublicationTargetSchema.options.map(
+  const checkedNames = ttsPublicationTargetSchema.options.map(
     (target) => archiveSpecification[target].assetName,
   );
   if (
@@ -150,17 +152,20 @@ export async function verifyPublishedSdRelease(
     checkedNames.some((name) => !checksums.has(name))
   ) {
     throw new Error(
-      "checksums.txt must contain exactly the two canonical sd-server archives.",
+      "checksums.txt must contain exactly the two canonical tts-server archives.",
     );
   }
 
   const sourceBytes = await download(
-    assets.get("SOURCE.sd-server.json")!,
+    assets.get("SOURCE.tts-server.json")!,
     fetcher,
+  );
+  const provenance = ttsSourceProvenanceSchema.parse(
+    JSON.parse(new TextDecoder().decode(sourceBytes)),
   );
 
   const runtimeEntries = await Promise.all(
-    sdPublicationTargetSchema.options.map(async (target) => {
+    ttsPublicationTargetSchema.options.map(async (target) => {
       const specification = archiveSpecification[target];
       const asset = assets.get(specification.assetName)!;
       const bytes = await download(asset, fetcher);
@@ -169,14 +174,14 @@ export async function verifyPublishedSdRelease(
         throw new Error(`Checksum mismatch for ${specification.assetName}.`);
       }
       const embeddedSource = (await readSdArchiveEntries(target, bytes)).find(
-        ({ name }) => name === "SOURCE.sd-server.json",
+        ({ name }) => name === "SOURCE.tts-server.json",
       )?.bytes;
       if (
         !embeddedSource ||
         !Buffer.from(embeddedSource).equals(Buffer.from(sourceBytes))
       ) {
         throw new Error(
-          `${specification.assetName} source identity does not match the published SOURCE.sd-server.json.`,
+          `${specification.assetName} source identity does not match the published SOURCE.tts-server.json.`,
         );
       }
       return [
@@ -195,23 +200,14 @@ export async function verifyPublishedSdRelease(
       ] as const;
     }),
   );
-  const sourceDocument = z
-    .object({
-      sources: z.array(z.object({ name: z.string(), revision: z.string() })),
-      patches: z.array(z.object({ name: z.string(), sha256: z.string() })),
-    })
-    .passthrough()
-    .parse(JSON.parse(new TextDecoder().decode(sourceBytes)));
   const source = sourceIdentitySchema.parse({
     manifestSha256: new Bun.CryptoHasher("sha256")
       .update(sourceBytes)
       .digest("hex"),
-    stableDiffusionRevision: sourceDocument.sources.find(
-      ({ name }) => name === "stable-diffusion.cpp",
-    )?.revision,
-    patches: sourceDocument.patches,
+    llamaCppRevision: provenance.sources[0].revision,
+    localSources: provenance.localSources,
   });
-  const receipt = sdReleaseReceiptSchema.parse({
+  const receipt = ttsReleaseReceiptSchema.parse({
     version: 1,
     repository,
     tag,

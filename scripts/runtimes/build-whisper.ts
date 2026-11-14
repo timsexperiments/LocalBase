@@ -71,7 +71,11 @@ async function main() {
   // every hunk of a git-format patch.
   await $`git -C ${sourcePath} init --quiet`;
   for (const patchName of patchNames) {
-    const patch = join(workspace, "scripts/whisper-patches", patchName);
+    const patch = join(
+      workspace,
+      "scripts/runtimes/whisper-patches",
+      patchName,
+    );
     await $`git -C ${sourcePath} apply --check ${patch}`;
     await $`git -C ${sourcePath} apply ${patch}`;
   }
@@ -102,7 +106,7 @@ async function main() {
   await Bun.write(licenseOutputPath, Bun.file(join(sourcePath, "LICENSE")));
   await $`chmod +x ${outputPath}`;
   if (process.platform === "linux") {
-    await $`bun run ${join(workspace, "scripts/test-whisper-gpu.ts")} ${sourcePath} ${outputPath}`;
+    await $`bun run ${join(workspace, "scripts/runtimes/test-whisper-gpu.ts")} ${sourcePath} ${outputPath}`;
   }
   console.log(`Built verified whisper-server: ${outputPath}`);
 }

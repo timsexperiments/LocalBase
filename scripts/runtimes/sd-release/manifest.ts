@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   managedRuntimeManifestSchema,
   parseManagedRuntimeManifest,
-} from "../../src/manager/managed-runtime-manifest";
+} from "../../../src/manager/managed-runtime-manifest";
 import {
   filePathSchema,
   sdPublicationTargetSchema,
