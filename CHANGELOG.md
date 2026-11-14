@@ -44,6 +44,10 @@ These differ from 0.1.0 for API clients:
 
 - New GitHub sign-in registrations. Use OIDC, Cloudflare Access or magic links. Existing GitHub registrations can only be listed and removed.
 
+### Fixed
+
+- **Diagnostics bundle on Linux and Intel Macs:** each model's memory verdict and `systemMemoryGb` now use this computer's memory, as `models list` and `models show` do. They were `0` and "won't fit" for every model.
+
 ### Known limits
 
 - Not qualified on real NVIDIA hardware, and Linux isn't qualified as an end-user install.
