@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -95,17 +100,67 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 	}
 }
 
-// The release build never compiles the test key in (DESIGN §33.5). Every file is read: one that
-// moved fails this test rather than leaving it to check nothing.
+// The release build never compiles the test key in (DESIGN §33.5): no -X of it, no
+// localbase_testkey tag, no tags through GOFLAGS, and it never builds the upgrade rehearsal, whose
+// kit carries the test key. Every file is read: one that moved fails this test rather than
+// leaving it to check nothing.
 func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 	repo := testutil.RepoRoot(t)
+	goflagsTags := regexp.MustCompile(`GOFLAGS[^\n]*-tags`)
 	for _, p := range []string{"go/tools/build.sh", "scripts/release/build.sh", ".github/workflows/release-go.yml"} {
 		b, err := os.ReadFile(filepath.Join(repo, p))
 		if err != nil {
 			t.Fatalf("the release build's %s: %v", p, err)
 		}
-		if strings.Contains(string(b), "testKey") {
-			t.Errorf("%s sets the test key", p)
+		refused := []string{"testKey", "localbase_testkey", "-tags"}
+		if p != "go/tools/build.sh" { // its comment says the rehearsal reads its flags; below, it builds only the command
+			refused = append(refused, "upgrade-rehearsal")
+		}
+		for _, word := range refused {
+			if strings.Contains(string(b), word) {
+				t.Errorf("%s names %q", p, word)
+			}
+		}
+		if goflagsTags.Match(b) {
+			t.Errorf("%s sets tags through GOFLAGS", p)
+		}
+		if p == "go/tools/build.sh" && (!strings.Contains(string(b), "./cmd/localbase") || strings.Contains(string(b), "./tools/")) {
+			t.Errorf("%s builds something other than ./cmd/localbase", p)
+		}
+	}
+}
+
+// The test key exists only in a build tagged localbase_testkey: every shipped source file (cmd,
+// internal) that names the testKey identifier carries the tag on its first line. Like
+// TestLabSeamFilesAreTagged; by identifier, not text, since the untagged file's comment names it.
+func TestTestKeyFilesAreTagged(t *testing.T) {
+	for _, dir := range []string{".", "../../internal"} {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			src, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			f, err := parser.ParseFile(token.NewFileSet(), path, src, parser.SkipObjectResolution)
+			if err != nil {
+				return err
+			}
+			named := false
+			ast.Inspect(f, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && id.Name == "testKey" {
+					named = true
+				}
+				return !named
+			})
+			if named && !bytes.HasPrefix(src, []byte("//go:build localbase_testkey\n")) {
+				t.Errorf("%s names testKey without //go:build localbase_testkey on its first line", path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 }

@@ -78,19 +78,39 @@ func removeUpgradeKit() {
 	}
 }
 
-// build compiles a stamped binary once per version and kind.
+// testKeyTag is the build tag without which upgrade.testKey doesn't exist (DESIGN §33.5).
+const testKeyTag = "localbase_testkey"
+
+// build compiles a stamped binary once per version and kind. A withKey build is a test-key build:
+// the localbase_testkey tag and the key's -X, always together. Without the tag the linker would
+// ignore the -X, the build would trust nothing, and every refusal would pass for the wrong reason;
+// TestUpgradeRefusesBadReleasesRealBinary first shows the key taking effect.
 func (k *upgradeKit) build(t *testing.T, ver string, withKey bool) string {
 	t.Helper()
-	name := fmt.Sprintf("local-base-%s-%v", ver, withKey)
+	flags := "-X " + modulePath + "/version.Version=" + ver + " -X " + modulePath + "/version.Commit=contracttest"
+	var args []string
+	if withKey {
+		flags += " " + k.keyFlag()
+		args = []string{"-tags", testKeyTag}
+	}
+	return k.compile(t, fmt.Sprintf("local-base-%s-%v", ver, withKey), args, flags)
+}
+
+// keyFlag is the -X that sets the test key.
+func (k *upgradeKit) keyFlag() string {
+	return "-X " + modulePath + "/upgrade.testKey=" + testKeyID + ":" + k.pub
+}
+
+// compile builds the command once per name, with these go build flags and -ldflags.
+func (k *upgradeKit) compile(t *testing.T, name string, args []string, ldflags string) string {
+	t.Helper()
 	if p, ok := k.bins.Load(name); ok {
 		return p.(string)
 	}
 	out := filepath.Join(k.dir, name)
-	flags := "-X " + modulePath + "/version.Version=" + ver + " -X " + modulePath + "/version.Commit=contracttest"
-	if withKey {
-		flags += " -X " + modulePath + "/upgrade.testKey=" + testKeyID + ":" + k.pub
-	}
-	cmd := exec.Command("go", "build", "-ldflags", flags, "-o", out, "github.com/timsexperiments/LocalBase/go/cmd/localbase")
+	cmdArgs := append(append([]string{"build"}, args...), "-ldflags", ldflags, "-o", out, "github.com/timsexperiments/LocalBase/go/cmd/localbase")
+	cmd := exec.Command("go", cmdArgs...)
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build %s: %v\n%s", name, err, b)
 	}
@@ -336,9 +356,98 @@ func TestSignatureGateRealBinary(t *testing.T) {
 	}
 }
 
+// The attack DESIGN §33.5 closes: a default build given the test key's -X, but not the tag. The
+// linker ignores an -X for a symbol the build doesn't have, so it trusts nothing and refuses a
+// release the test key signed, with the gate's error. (TestUpgradeEndToEnd: the tagged build
+// accepts that release.)
+func TestTheTestKeyNeedsItsTag(t *testing.T) {
+	k := theKit(t)
+	rel := newFakeReleases(t, "v9.9.9")
+	rel.tags["v9.9.9"] = k.releaseFiles(t, k.build(t, "9.9.9", true))
+	stamp := "-X " + modulePath + "/version.Version=0.2.0 -X " + modulePath + "/version.Commit=contracttest"
+	bin := installBinary(t, k.compile(t, "local-base-0.2.0-key-without-tag", nil, stamp+" "+k.keyFlag()))
+	res := runBinary(t, bin, rel.env(), "--root", filepath.Join(fsguard.ScratchDir(t), "root"), "upgrade", "--yes")
+	if res.code != 1 || !strings.Contains(res.stderr+res.stdout, "signature verification required") {
+		t.Errorf("the -X alone made a build trust the test key: %d %s %s", res.code, res.stdout, res.stderr)
+	}
+	if got := versionOf(t, bin); got != "0.2.0" {
+		t.Errorf("it changed: %s", got)
+	}
+}
+
+// What a release carries, built with the release's own flags (tools/build.sh --goflags and
+// --ldflags, stripped): with the test key's -X but no tag, the key's bytes aren't in it; tagged,
+// they are (the control). go version -m names the tag only for the tagged build. go tool nm finds
+// upgrade.testKey only in an unstripped tagged build (nm proves nothing on -s -w; the byte search
+// covers the stripped one).
+func TestTheReleaseShapeCarriesNoTestKey(t *testing.T) {
+	k := theKit(t)
+	script := func(flag string) string {
+		t.Helper()
+		out, err := exec.Command("../../tools/build.sh", flag).Output()
+		if err != nil {
+			t.Fatalf("tools/build.sh %s: %v", flag, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	goflags, ldflags := strings.Fields(script("--goflags")), script("--ldflags")+" "+k.keyFlag()
+	unstripped := strings.NewReplacer("-s -w ", "", "-s ", "", "-w ", "").Replace(ldflags)
+	tagged := append(append([]string{}, goflags...), "-tags", testKeyTag)
+	bins := map[string]string{
+		"release":            k.compile(t, "shape-release", goflags, ldflags),
+		"tagged":             k.compile(t, "shape-tagged", tagged, ldflags),
+		"release-unstripped": k.compile(t, "shape-release-unstripped", goflags, unstripped),
+		"tagged-unstripped":  k.compile(t, "shape-tagged-unstripped", tagged, unstripped),
+	}
+	contains := func(name, s string) bool {
+		t.Helper()
+		b, err := os.ReadFile(bins[name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bytes.Contains(b, []byte(s))
+	}
+	if contains("release", k.pub) || !contains("tagged", k.pub) {
+		t.Errorf("the key's bytes: in the release build %v (want false), in the tagged one %v (want true)", contains("release", k.pub), contains("tagged", k.pub))
+	}
+	info := func(name string) string {
+		t.Helper()
+		out, err := exec.Command("go", "version", "-m", bins[name]).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go version -m %s: %v\n%s", name, err, out)
+		}
+		return string(out)
+	}
+	if strings.Contains(info("release"), testKeyTag) || !strings.Contains(info("tagged"), "-tags="+testKeyTag) {
+		t.Errorf("go version -m:\nrelease:\n%s\ntagged:\n%s", info("release"), info("tagged"))
+	}
+	symbols := func(name string) string {
+		t.Helper()
+		out, err := exec.Command("go", "tool", "nm", bins[name]).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go tool nm %s: %v\n%.500s", name, err, out)
+		}
+		return string(out)
+	}
+	if strings.Contains(symbols("release-unstripped"), "upgrade.testKey") || !strings.Contains(symbols("tagged-unstripped"), "upgrade.testKey") {
+		t.Error("go tool nm: upgrade.testKey should be only in the unstripped tagged build")
+	}
+}
+
 func TestUpgradeRefusesBadReleasesRealBinary(t *testing.T) {
 	k := theKit(t)
 	old, next := k.build(t, "0.2.0", true), k.build(t, "9.9.9", true)
+	// First, the test key takes effect: the release, unchanged, is accepted. A kit that lost the
+	// tag would trust nothing, and every refusal below would pass for the wrong reason.
+	{
+		rel := newFakeReleases(t, "v9.9.9")
+		rel.tags["v9.9.9"] = k.releaseFiles(t, next)
+		bin := installBinary(t, old)
+		res := runBinary(t, bin, rel.env(), "--root", filepath.Join(fsguard.ScratchDir(t), "root"), "--json", "upgrade", "--yes")
+		if res.code != 0 || !strings.Contains(res.stdout, `"signedBy":"`+testKeyID+`"`) {
+			t.Fatalf("a release the test key signed wasn't accepted, so the key didn't take: %d\n%s\n%s", res.code, res.stdout, res.stderr)
+		}
+	}
 	archive := upgrade.AssetArchive(goruntime.GOOS, goruntime.GOARCH)
 	_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

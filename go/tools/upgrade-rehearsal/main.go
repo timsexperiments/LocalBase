@@ -251,15 +251,17 @@ func readReleaseBuild(version string) (releaseBuild, error) {
 	return rb, nil
 }
 
-// goArgs is the go build command line for pkg: the release's flags, with extra added to its
-// -ldflags.
-func (rb releaseBuild) goArgs(extra, out, pkg string) []string {
+// goArgs is the release's go build, with tags (none, or the test key's tag) and extra -ldflags.
+func (rb releaseBuild) goArgs(tags, extra, out, pkg string) []string {
 	args := append([]string{"build"}, rb.goflags...)
+	if tags != "" {
+		args = append(args, "-tags", tags)
+	}
 	return append(args, "-ldflags", strings.TrimSpace(rb.ldflags+" "+extra), "-o", out, pkg)
 }
 
-func goBuild(goos, goarch string, rb releaseBuild, extra, out, pkg string) error {
-	cmd := exec.Command("go", rb.goArgs(extra, out, pkg)...)
+func goBuild(goos, goarch string, rb releaseBuild, tags, extra, out, pkg string) error {
+	cmd := exec.Command("go", rb.goArgs(tags, extra, out, pkg)...)
 	cmd.Env = append(append(os.Environ(), rb.env...), "GOOS="+goos, "GOARCH="+goarch)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("go build %s: %w\n%s", pkg, err, b)
@@ -267,8 +269,14 @@ func goBuild(goos, goarch string, rb releaseBuild, extra, out, pkg string) error
 	return nil
 }
 
-// testKeyFlag compiles the rehearsal's throwaway signing key in: the one thing the kit's build
-// adds to a release's.
+// testKeyTag is the build tag without which upgrade.testKey doesn't exist (DESIGN §33.5). The
+// kit's -X of the key is always built with it: without it the linker ignores the -X, and the kit
+// trusts nothing. The rehearsal's own upgrade, of a release this key signed, is what shows the key
+// took effect. The release workflow never builds this tool.
+const testKeyTag = "localbase_testkey"
+
+// testKeyFlag compiles the rehearsal's throwaway signing key in: with testKeyTag, the one thing
+// the kit's build adds to a release's.
 func testKeyFlag(pub ed25519.PublicKey) string {
 	return "-X " + modulePath + "/upgrade.testKey=" + keyID + ":" + base64.StdEncoding.EncodeToString(pub)
 }
@@ -365,7 +373,7 @@ func buildKit(kit, goos, goarch string) error {
 		if err != nil {
 			return err
 		}
-		if err := goBuild(goos, goarch, rb, testKeyFlag(pub), filepath.Join(kit, name), "./cmd/localbase"); err != nil {
+		if err := goBuild(goos, goarch, rb, testKeyTag, testKeyFlag(pub), filepath.Join(kit, name), "./cmd/localbase"); err != nil {
 			return err
 		}
 	}
@@ -373,7 +381,7 @@ func buildKit(kit, goos, goarch string) error {
 	if err != nil {
 		return err
 	}
-	if err := goBuild(goos, goarch, rb, "", filepath.Join(kit, "fake-backend"), "./internal/runtime/fakebackend"); err != nil {
+	if err := goBuild(goos, goarch, rb, "", "", filepath.Join(kit, "fake-backend"), "./internal/runtime/fakebackend"); err != nil {
 		return err
 	}
 	broken := filepath.Join(kit, "local-base-broken")

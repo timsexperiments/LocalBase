@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
@@ -13,6 +14,9 @@ func versionCommand() *cli.Command {
 			b := version.Get()
 			if !c.Global.JSON {
 				c.Info("LocalBase %s", b)
+				if upgrade.BuiltWithTestKey() { // never a release: DESIGN §33.5
+					c.Info("Built with the test signing key: not for release.")
+				}
 			}
 			return b, nil
 		}}

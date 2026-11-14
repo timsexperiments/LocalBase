@@ -64,17 +64,11 @@ type Key struct {
 // creates a release key, and until then this build refuses to install anything (DESIGN §33.2).
 var ReleaseKeys = []Key{}
 
-// testKey is set only with -ldflags in test builds, as "id:base64". The release build sets no
-// such thing, and scripts/release/build.sh is checked for that.
-var testKey string
-
-// TrustedKeys is what this build will accept.
+// TrustedKeys is what this build will accept: ReleaseKeys, and only in a build tagged
+// localbase_testkey, the test key (testkey_on.go, DESIGN §33.5).
 func TrustedKeys() []Key {
 	keys := append([]Key{}, ReleaseKeys...)
-	if id, pub, ok := strings.Cut(testKey, ":"); ok {
-		keys = append(keys, Key{ID: id, Public: pub})
-	}
-	return keys
+	return append(keys, extraKeys()...)
 }
 
 // Ready says whether any listed key can verify a release.
