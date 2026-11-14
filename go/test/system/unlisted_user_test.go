@@ -27,16 +27,14 @@ import (
 // Sessions are written to the database, because neither binary can be made to trust
 // a fake HTTPS provider here. Neither implementation's sign-in consults the policy:
 // that part is from reading the code and, for Go, TestOIDCUnauthorizedEmail.
+//
+// Go's refusals are checked under -impl=go too; TS's answers, and the comparison, under
+// -impl=both.
 const unlistedModel = "contract-unlisted-llm"
 
 func TestDifferentialUnlistedUser(t *testing.T) {
-	if harness.Impl() != "both" {
-		t.Skip("needs -impl=both")
-	}
+	eachCLI(t)
 	harness.LogFreeMemoryOnFailure(t)
-	if _, err := exec.LookPath("bun"); err != nil {
-		t.Skip("needs bun")
-	}
 	const (
 		issuer = "https://accounts.google.com"
 		origin = "https://lb.example.com"
@@ -164,10 +162,14 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 			"role-can-chat":   send("POST", "/app/api/v1/chat/completions", chatter, chat),
 		}
 	}
-	ts, goImpl := run("ts"), run("go")
+	goImpl := run("go")
+	var ts map[string]answer
+	if tsLive() {
+		ts = run("ts")
+	}
 	// The same on both.
 	for _, name := range []string{"session", "access", "keys", "management"} {
-		if ts[name] != goImpl[name] {
+		if ts != nil && ts[name] != goImpl[name] {
 			t.Errorf("%s:\n ts %d %.300s\n go %d %.300s", name, ts[name].status, ts[name].body, goImpl[name].status, goImpl[name].body)
 		}
 	}
@@ -184,7 +186,7 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		if goImpl[name].status != 403 {
 			t.Errorf("go %s: %d %.300s", name, goImpl[name].status, goImpl[name].body)
 		}
-		if ts[name].status == 403 || ts[name].status == 401 {
+		if ts != nil && (ts[name].status == 403 || ts[name].status == 401) {
 			t.Logf("TS now refuses %s, so the recorded difference may be stale: %d", name, ts[name].status)
 			t.Errorf("ts %s: %d %.300s", name, ts[name].status, ts[name].body)
 		}
@@ -205,8 +207,9 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		}
 		t.Errorf("%s %s: %d %.300s", impl, what, a.status, a.body)
 	}
-	for impl, answers := range map[string]map[string]answer{"ts": ts, "go": goImpl} {
-		reachedFake(impl, "a role that may chat", answers["role-can-chat"])
+	reachedFake("go", "a role that may chat", goImpl["role-can-chat"])
+	if ts != nil {
+		reachedFake("ts", "a role that may chat", ts["role-can-chat"])
+		reachedFake("ts", "unlisted chat should reach the fake", ts["chat"])
 	}
-	reachedFake("ts", "unlisted chat should reach the fake", ts["chat"])
 }

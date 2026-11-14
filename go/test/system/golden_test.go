@@ -1,0 +1,289 @@
+package system
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+)
+
+// The pinned CLI tests. Each of these compared the Go command line with TS's under -impl=both and
+// tested nothing else, so before TypeScript is retired (step 7's R3a) they also pin Go's own
+// results (harness.Pins says where). Where a test pins, its Go CLI runs:
+//
+//   - as the localbase_lab build on harness.FixedHostJSON's 64 GiB unified host, so what depends
+//     on the host's memory (fit verdicts, systemMemoryGb, what --fits lists) is the same on every
+//     runner. The lab build differs from the release only in that host seam, which
+//     TestLabSeamFilesAreTagged holds to localbase_lab files;
+//   - are recorded, normalized and in order, as the test's transcript, and compared with
+//     testdata/golden/<Test>.json.
+//
+// Under -impl=go, TS's twin runs are played by Go itself and the transcript is the pin. Where a
+// test doesn't pin, its Go CLI is the release build on this machine, as before the pins.
+
+// transcriptCall is one Go CLI run of a pinned test, normalized (scrub).
+type transcriptCall struct {
+	Args   []string `json:"args"`
+	Code   int      `json:"code"`
+	Stdout string   `json:"stdout"`
+	Stderr string   `json:"stderr"`
+	Masks  []string `json:"masks,omitempty"`
+}
+
+type pin struct {
+	mu   sync.Mutex
+	host string // the fixed host's file
+	want []transcriptCall
+	got  []transcriptCall
+	twin map[string]bool // the TS roots twinRoots made
+}
+
+var pins sync.Map // top-level test name -> *pin
+
+func pinOf(t testing.TB) *pin {
+	name, _, _ := strings.Cut(t.Name(), "/")
+	if p, ok := pins.Load(name); ok {
+		return p.(*pin)
+	}
+	return nil
+}
+
+// pinnedFixture starts a test that pins values (harness.PinValues) and launches gateways: it
+// returns the launch options that put them on the golden fixture where the test pins, and none
+// where it doesn't.
+func pinnedFixture(t *testing.T) []harness.Option {
+	t.Helper()
+	if harness.PinValues(t) {
+		return []harness.Option{harness.GoldenFixture()}
+	}
+	return nil
+}
+
+// tsLive is whether TS itself runs: under -impl=go a pinned test's TS twin is played by Go.
+func tsLive() bool { return harness.Impl() == "both" }
+
+// pinned starts a pinned CLI test: see the comment at the top of this file.
+func pinned(t *testing.T) {
+	t.Helper()
+	if !harness.Pins(t) {
+		return // TS live, compared with Go on this machine
+	}
+	update := os.Getenv(fsguard.UpdateGoldenEnv) == "1"
+	host := filepath.Join(fsguard.ScratchDir(t), "fixed-host.json")
+	if err := fsguard.WriteFile(host, []byte(harness.FixedHostJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := &pin{host: host, twin: map[string]bool{}}
+	golden := filepath.Join("testdata", "golden", t.Name()+".json")
+	if !update {
+		b, err := os.ReadFile(golden)
+		if err != nil {
+			t.Fatalf("no golden for %s (%v): record it with -impl=both and %s=1", t.Name(), err, fsguard.UpdateGoldenEnv)
+		}
+		var g struct {
+			Calls []transcriptCall `json:"calls"`
+		}
+		if err := json.Unmarshal(b, &g); err != nil {
+			t.Fatalf("%s: %v", golden, err)
+		}
+		p.want = g.Calls
+	}
+	pins.Store(t.Name(), p)
+	t.Cleanup(func() {
+		pins.Delete(t.Name())
+		if update {
+			if t.Failed() {
+				t.Logf("%s not recorded: the test failed, so TS and Go did not agree", golden)
+				return
+			}
+			b, _ := json.MarshalIndent(struct {
+				Calls []transcriptCall `json:"calls"`
+			}{p.got}, "", "  ")
+			if err := fsguard.WriteGolden(t.Name()+".json", append(b, '\n')); err != nil {
+				t.Error(err)
+			}
+			return
+		}
+		if len(p.got) < len(p.want) {
+			t.Errorf("Go ran %d of the %d commands in %s; the first not run: %v", len(p.got), len(p.want), golden, p.want[len(p.got)].Args)
+		}
+	})
+}
+
+// ran takes one CLI run of a pinned test. Go's runs go into the transcript, except on a TS root
+// (twinRoots): under -impl=go Go plays TS there, so what Go reads in it isn't what TS made.
+func (p *pin) ran(t *testing.T, impl, root string, args []string, res cliResult) {
+	t.Helper()
+	p.mu.Lock()
+	twin := p.twin[root]
+	p.mu.Unlock()
+	if impl == "go" && !twin {
+		p.record(t, root, args, res)
+	}
+}
+
+// record adds one Go CLI run to the test's transcript and compares it with the golden's.
+func (p *pin) record(t *testing.T, root string, args []string, res cliResult) {
+	t.Helper()
+	var masks []string
+	call := transcriptCall{Code: res.code, Args: make([]string, len(args))}
+	for i, a := range args {
+		call.Args[i] = scrub(a, root, args, nil)
+	}
+	call.Stdout = scrub(res.stdout, root, args, &masks)
+	call.Stderr = scrub(res.stderr, root, args, &masks)
+	sort.Strings(masks)
+	call.Masks = slices.Compact(masks)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	i := len(p.got)
+	p.got = append(p.got, call)
+	if p.want == nil {
+		return // recording
+	}
+	if i >= len(p.want) {
+		t.Errorf("Go ran a command the golden doesn't have (#%d): %v", i+1, call.Args)
+		return
+	}
+	if d := diffCall(p.want[i], call); d != "" {
+		t.Errorf("Go's command #%d (%v) differs from the golden:\n%s\nIf the change is intended, record again with -impl=both and %s=1.", i+1, call.Args, d, fsguard.UpdateGoldenEnv)
+	}
+}
+
+// hostMask is a named part of an output that depends on the machine and not on LocalBase. Each
+// call records the masks it needed, and a replay must need the same ones: a masked field that
+// disappears fails the comparison instead of passing unnoticed.
+type hostMask struct {
+	name    string
+	applies func(args []string) bool
+	re      *regexp.Regexp
+	repl    func(string) string
+}
+
+var (
+	hardwareValue = regexp.MustCompile(`("(?:osName|ramGb|cpuModel|gpuName|gpuVramGb|isMac|isAppleSilicon)":)("[^"]*"|[^,}]*)`)
+	hostMasks     = []hostMask{
+		// doctor's hardware block: the machine's OS, CPU, RAM and GPU (sysinfo, not the lab host).
+		{name: "doctor hardware", applies: isDoctor, re: regexp.MustCompile(`"hardware":\{[^{}]*\}`),
+			repl: func(m string) string { return hardwareValue.ReplaceAllString(m, `$1"<host>"`) }},
+		// doctor's human lines about the machine and the build: the version line carries the
+		// commit and the Go toolchain, and Status follows the machine's RAM.
+		{name: "doctor lines", applies: isDoctor, re: regexp.MustCompile(`(?m)^(LocalBase|OS|CPU|RAM|GPU|GPU VRAM|Status): .+$`),
+			repl: func(m string) string { label, _, _ := strings.Cut(m, ": "); return label + ": <host>" }},
+	}
+	loopbackPort = regexp.MustCompile(`(127\.0\.0\.1|localhost):\d+`)
+	// A key's prefix and a voice's id are random; a diagnostics archive's size follows the
+	// compression of what it holds, times included.
+	keyPrefixJSON = regexp.MustCompile(`"prefix":"[A-Za-z0-9_-]{8}"`)
+	keyPrefixText = regexp.MustCompile(`\bprefix=[A-Za-z0-9_-]{8}`)
+	voiceID       = regexp.MustCompile(`\bvoice-[0-9a-f]{12}\b`)
+	archiveBytes  = regexp.MustCompile(`("archive":\{[^{}]*"bytes":)\d+`)
+)
+
+func isDoctor(args []string) bool { return slices.Contains(args, "doctor") }
+
+// scrub normalizes one string of a Go CLI run for the transcript: the run's root, the system temp
+// directory's entries (each test's scratch), loopback ports, ids, secrets and times, and the
+// host masks (named in masks when masks isn't nil).
+func scrub(s, root string, args []string, masks *[]string) string {
+	if root != "" {
+		s = strings.ReplaceAll(s, root, "<root>")
+	}
+	for _, tmp := range tempDirs() {
+		s = regexp.MustCompile(regexp.QuoteMeta(tmp)+`/[^/\s"']+`).ReplaceAllString(s, "<tmp>")
+	}
+	s = loopbackPort.ReplaceAllString(s, "$1:<port>")
+	s = keyPrefixJSON.ReplaceAllString(s, `"prefix":"<prefix>"`)
+	s = keyPrefixText.ReplaceAllString(s, "prefix=<prefix>")
+	s = voiceID.ReplaceAllString(s, "voice-<id>")
+	s = archiveBytes.ReplaceAllString(s, `$1"<bytes>"`)
+	s = volatileValue.ReplaceAllStringFunc(s, func(m string) string {
+		switch {
+		case strings.HasPrefix(m, "key_"):
+			return "<key-id>"
+		case strings.HasPrefix(m, "lb_"):
+			return "<secret>"
+		case len(m) == 36 && m[8] == '-':
+			return "<uuid>"
+		}
+		return "<time>"
+	})
+	if masks != nil {
+		for _, m := range hostMasks {
+			if m.applies(args) && m.re.MatchString(s) {
+				s = m.re.ReplaceAllStringFunc(s, m.repl)
+				*masks = append(*masks, m.name)
+			}
+		}
+	}
+	return s
+}
+
+// tempDirs is the system temp directory as the CLI may print it: as given and with its links
+// resolved (/var and /private/var on macOS), the longer first.
+func tempDirs() []string {
+	tmp := filepath.Clean(os.TempDir())
+	dirs := []string{tmp}
+	if real, err := filepath.EvalSymlinks(tmp); err == nil && real != tmp {
+		dirs = append(dirs, real)
+	}
+	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) > len(dirs[j]) })
+	return dirs
+}
+
+// diffCall says how a run differs from the golden's, or "".
+func diffCall(want, got transcriptCall) string {
+	var out []string
+	if !slices.Equal(want.Args, got.Args) {
+		out = append(out, fmt.Sprintf("args: golden %v", want.Args))
+	}
+	if want.Code != got.Code {
+		out = append(out, fmt.Sprintf("exit code: golden %d, now %d", want.Code, got.Code))
+	}
+	if !slices.Equal(want.Masks, got.Masks) {
+		out = append(out, fmt.Sprintf("host masks: golden %v, now %v", want.Masks, got.Masks))
+	}
+	for _, f := range []struct{ name, want, got string }{{"stdout", want.Stdout, got.Stdout}, {"stderr", want.Stderr, got.Stderr}} {
+		if f.want == f.got {
+			continue
+		}
+		var a, b any
+		if json.Unmarshal([]byte(f.want), &a) == nil && json.Unmarshal([]byte(f.got), &b) == nil {
+			if d := harness.DiffJSON("", a, b, nil); len(d) > 0 {
+				if len(d) > 12 {
+					d = append(d[:12], "...")
+				}
+				out = append(out, f.name+" (golden vs now):\n    "+strings.Join(d, "\n    "))
+				continue
+			}
+		}
+		out = append(out, f.name+": "+firstLineDiff(f.want, f.got))
+	}
+	return strings.Join(out, "\n")
+}
+
+func firstLineDiff(want, got string) string {
+	a, b := strings.Split(want, "\n"), strings.Split(got, "\n")
+	for i := 0; i < len(a) || i < len(b); i++ {
+		var x, y string
+		if i < len(a) {
+			x = a[i]
+		}
+		if i < len(b) {
+			y = b[i]
+		}
+		if x != y {
+			return fmt.Sprintf("line %d: golden %q, now %q", i+1, x, y)
+		}
+	}
+	return "differs"
+}

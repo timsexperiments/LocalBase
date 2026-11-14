@@ -3,6 +3,7 @@ package system
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,11 +110,18 @@ func runCLI(t *testing.T, impl, root string, args ...string) cliResult {
 func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cliResult {
 	t.Helper()
 	full := append([]string{"--root", root}, args...)
+	p := pinOf(t)
 	var cmd *exec.Cmd
-	if impl == "ts" {
+	switch {
+	case impl == "ts" && (p == nil || tsLive()):
 		cmd = exec.Command("bun", append([]string{"run", "src/cli.ts"}, full...)...)
 		cmd.Dir = testutil.RepoRoot(t)
-	} else {
+	case p != nil:
+		// A pinned test's Go runs, and its TS twin's under -impl=go, are the lab build on the
+		// fixed host (golden_test.go).
+		cmd = exec.Command(goLabCLI(t), full...)
+		env = append([]string{"LOCALBASE_LAB_HOST_FILE=" + p.host}, env...)
+	default:
 		cmd = exec.Command(goCLI(t), full...)
 	}
 	cmd.Env = cleanEnv()
@@ -134,7 +142,11 @@ func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cl
 	} else if err != nil {
 		t.Fatal(err)
 	}
-	return cliResult{code, out.String(), errb.String()}
+	res := cliResult{code, out.String(), errb.String()}
+	if p != nil {
+		p.ran(t, impl, root, args, res)
+	}
+	return res
 }
 
 var volatileValue = regexp.MustCompile(`key_[0-9a-f-]{36}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|lb_[A-Za-z0-9_-]{32}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z`)
@@ -174,7 +186,13 @@ type cliCase struct {
 func twinRoots(t *testing.T) (string, string) {
 	base := fsguard.ScratchDir(t)
 	base, _ = filepath.EvalSymlinks(base)
-	return filepath.Join(base, "ts"), filepath.Join(base, "go")
+	ts := filepath.Join(base, "ts")
+	if p := pinOf(t); p != nil {
+		p.mu.Lock()
+		p.twin[ts] = true
+		p.mu.Unlock()
+	}
+	return ts, filepath.Join(base, "go")
 }
 
 // initOwnTwinRoots runs each implementation's own `init` on its twin root (ts, go), so neither
@@ -198,6 +216,9 @@ func compareCLI(t *testing.T, roots [2]string, c cliCase) {
 		goArgs = c.goArgs
 	}
 	gr := runCLI(t, "go", roots[1], goArgs...)
+	if !tsLive() {
+		return // the twin is Go itself (golden_test.go): Go's run is pinned by the transcript
+	}
 	label := strings.Join(c.args, " ")
 	if ts.code != gr.code {
 		t.Errorf("%s: exit ts=%d go=%d\nts: %s%s\ngo: %s%s", label, ts.code, gr.code, ts.stdout, ts.stderr, gr.stdout, gr.stderr)
@@ -224,7 +245,7 @@ func compareCLI(t *testing.T, roots [2]string, c cliCase) {
 }
 
 func TestCLIInitAndKeys(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	errorMessage := func(p string) bool { return p == ".error.message" }
@@ -275,7 +296,7 @@ func TestCLIInitAndKeys(t *testing.T) {
 }
 
 func TestCLIModels(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	for i, impl := range []string{"ts", "go"} {
@@ -315,7 +336,7 @@ func TestCLIModels(t *testing.T) {
 }
 
 func TestCLIConfigure(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	msg := func(p string) bool { return p == ".error.message" }
@@ -348,59 +369,26 @@ func TestCLIConfigure(t *testing.T) {
 	}
 }
 
-// TestTSReadsGoLogs runs the TS `logs` command over the Go gateway's event
-// file: every line Go wrote must pass the TS event schema.
-func TestTSReadsGoLogs(t *testing.T) {
-	harness.RequireTS(t)
-	var goT *harness.Target
-	for _, tg := range harness.Targets(t) {
-		if tg.Name == "go" {
-			goT = tg
-		}
-	}
-	if goT == nil {
-		t.Skip("no Go target")
-	}
-	// Make a few events of different kinds.
-	harness.Do(t, "GET", goT.BaseURL+"/v1/models", harness.Bearer(goT.Key), "")
-	harness.Do(t, "GET", goT.BaseURL+"/nope", harness.Bearer(goT.Key), "")
-	harness.Do(t, "POST", goT.BaseURL+"/v1/chat/completions", harness.Bearer(goT.Key), `{"model":"x","messages":[]}`)
-	harness.Do(t, "GET", goT.BaseURL+"/app/models", nil, "")
-	raw, err := os.ReadFile(filepath.Join(goT.Root, "logs", "events.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Count(strings.TrimSpace(string(raw)), "\n") + 1
-	r := runCLI(t, "ts", goT.Root, "--json", "logs", "--limit", "5000")
-	if r.code != 0 {
-		t.Fatalf("ts logs: %d %s %s", r.code, r.stdout, r.stderr)
-	}
-	var env struct {
-		Data struct{ Events []map[string]any }
-	}
-	if err := json.Unmarshal([]byte(r.stdout), &env); err != nil {
-		t.Fatal(err)
-	}
-	if len(env.Data.Events) != lines {
-		t.Errorf("TS read %d of %d Go events; stderr: %s", len(env.Data.Events), lines, r.stderr)
-	}
-}
-
 // TestCLILogs reads each launched gateway's log with both CLIs: the same
-// file must give the same events.
+// file must give the same events. Go's answers are checked on their own too: the log holds what
+// the package's other tests did to the shared gateway, so it can't be pinned as a transcript.
 func TestCLILogs(t *testing.T) {
-	harness.RequireTS(t)
+	eachCLI(t)
 	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" {
 			continue
 		}
 		harness.Do(t, "GET", tg.BaseURL+"/v1/models", harness.Bearer(tg.Key), "")
 		harness.Do(t, "GET", tg.BaseURL+"/nope", harness.Bearer(tg.Key), "")
+		checkGoLogs(t, tg)
 		for _, args := range [][]string{{"--json", "logs"}, {"--json", "logs", "--limit", "2"}, {"--json", "logs", "--level", "warn"},
 			{"--json", "logs", "--runtime", "gateway", "--since", "2020-01-01T00:00:00Z"}, {"--json", "logs", "--limit", "0"},
 			{"--json", "logs", "--level", "loud"}} {
-			ts := runCLI(t, "ts", tg.Root, args...)
 			gr := runCLI(t, "go", tg.Root, args...)
+			if !tsLive() {
+				continue
+			}
+			ts := runCLI(t, "ts", tg.Root, args...)
 			if ts.code != gr.code {
 				t.Errorf("%s %v: exit ts=%d go=%d", tg.Name, args, ts.code, gr.code)
 				continue
@@ -416,9 +404,89 @@ func TestCLILogs(t *testing.T) {
 	}
 }
 
+// eachCLI starts a test that runs each target's own CLI against its own gateway and checks what it
+// says: under -impl=go Go's, under -impl=both TS's too. It compares neither with the other.
+func eachCLI(t *testing.T) {
+	t.Helper()
+	switch harness.Impl() {
+	case "both":
+		harness.RequireTS(t)
+	case "go":
+	default:
+		t.Skip("runs the Go CLI")
+	}
+}
+
+// checkGoLogs checks what Go's logs command says about tg's log: every filter holds on what it
+// returns, and the requests just made are there.
+func checkGoLogs(t *testing.T, tg *harness.Target) {
+	t.Helper()
+	type event struct {
+		Timestamp, Severity, Runtime string
+		HTTP                         *struct {
+			Method, Path string
+			Status       int
+		}
+	}
+	read := func(args ...string) []event {
+		t.Helper()
+		r := runCLI(t, "go", tg.Root, append([]string{"--json", "logs"}, args...)...)
+		var env struct {
+			OK   bool                     `json:"ok"`
+			Data struct{ Events []event } `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(r.stdout), &env); err != nil || r.code != 0 || !env.OK {
+			t.Fatalf("go logs %v: exit %d %v %s %s", args, r.code, err, r.stdout, r.stderr)
+		}
+		return env.Data.Events
+	}
+	all := read("--limit", "5000")
+	var models, nope bool
+	var seen []string
+	for _, e := range all {
+		if e.HTTP != nil {
+			seen = append(seen, fmt.Sprintf("%s %s %d", e.HTTP.Method, e.HTTP.Path, e.HTTP.Status))
+			models = models || e.HTTP.Method == "GET" && e.HTTP.Path == "/v1/models" && e.HTTP.Status == 200
+			// An unmatched path is logged by name, never as sent.
+			nope = nope || e.HTTP.Method == "GET" && e.HTTP.Path == "unmatched-route" && e.HTTP.Status == 404
+		}
+	}
+	if !models || !nope {
+		t.Errorf("go logs: GET /v1/models 200 %v, GET unmatched-route 404 %v, in %d events; requests: %v", models, nope, len(all), seen)
+	}
+	if n := len(read()); n == 0 || n > 200 || n > len(all) {
+		t.Errorf("go logs: %d events by default (200 at most), of %d", n, len(all))
+	}
+	if n := len(read("--limit", "2")); n != min(2, len(all)) {
+		t.Errorf("go logs --limit 2: %d events", n)
+	}
+	for _, e := range read("--level", "warn") {
+		if e.Severity != "warn" {
+			t.Errorf("go logs --level warn: a %s event", e.Severity)
+		}
+	}
+	for _, e := range read("--runtime", "gateway", "--since", "2020-01-01T00:00:00Z") {
+		if e.Runtime != "gateway" || e.Timestamp < "2020-01-01T00:00:00Z" {
+			t.Errorf("go logs --runtime gateway --since 2020: a %s event at %s", e.Runtime, e.Timestamp)
+		}
+	}
+	for _, bad := range [][]string{{"--limit", "0"}, {"--level", "loud"}} {
+		r := runCLI(t, "go", tg.Root, append([]string{"--json", "logs"}, bad...)...)
+		var env struct {
+			OK    bool `json:"ok"`
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(r.stdout), &env); err != nil || r.code == 0 || env.OK || !strings.Contains(env.Error.Message, bad[0][2:]) {
+			t.Errorf("go logs %v: exit %d %v %s", bad, r.code, err, r.stdout)
+		}
+	}
+}
+
 // TestCLISmoke runs each CLI's smoke check against its own gateway.
 func TestCLISmoke(t *testing.T) {
-	harness.RequireTS(t)
+	eachCLI(t)
 	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" || !tg.RealModel {
 			continue

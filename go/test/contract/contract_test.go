@@ -299,24 +299,29 @@ func TestChatCompletion(t *testing.T) {
 // TestDifferentialModels compares the TS and Go /v1/models on identical
 // fixtures. Only meaningful with -impl=both.
 func TestDifferentialModels(t *testing.T) {
-	if len(harness.Targets(t)) < 2 {
-		t.Skip("run with -impl=both")
-	}
-	a, b := models(t, harness.Targets(t)[0]), models(t, harness.Targets(t)[1])
-	if len(a) != len(b) {
-		t.Fatalf("%s has %d models, %s has %d", harness.Targets(t)[0].Name, len(a), harness.Targets(t)[1].Name, len(b))
-	}
+	ts, gw := pinnedTargets(t)
 	// Measured peaks come from two different processes; compare presence only.
 	volatile := func(m map[string]any) {
 		if mem, ok := m["memory"].(map[string]any); ok && mem["observed_peak_bytes"] != nil {
 			mem["observed_peak_bytes"] = "present"
 		}
 	}
+	b := models(t, gw)
+	for i := range b {
+		volatile(b[i])
+	}
+	harness.PinJSON(t, "/v1/models", b)
+	if ts == nil {
+		return
+	}
+	a := models(t, ts)
+	if len(a) != len(b) {
+		t.Fatalf("%s has %d models, %s has %d", ts.Name, len(a), gw.Name, len(b))
+	}
 	for i := range a {
 		volatile(a[i])
-		volatile(b[i])
 		if !sameIgnoring(a[i], b[i]) {
-			t.Errorf("%v differs:\n%s: %s\n%s: %s", a[i]["id"], harness.Targets(t)[0].Name, j(a[i]), harness.Targets(t)[1].Name, j(b[i]))
+			t.Errorf("%v differs:\n%s: %s\n%s: %s", a[i]["id"], ts.Name, j(a[i]), gw.Name, j(b[i]))
 		}
 	}
 }
@@ -453,9 +458,7 @@ func TestEmbeddings(t *testing.T) {
 // TestDifferentialModelMetadata compares /_localbase/models between the two
 // implementations, apart from live host memory and runtime queue state.
 func TestDifferentialModelMetadata(t *testing.T) {
-	if len(harness.Targets(t)) < 2 {
-		t.Skip("run with -impl=both")
-	}
+	ts, gw := pinnedTargets(t)
 	volatile := func(p string) bool {
 		// device.placement is Go only (CPU/GPU placement, DESIGN §20).
 		return p == ".host.memory.system.availableBytes" || strings.HasSuffix(p, ".device.runtime") || strings.Contains(p, ".device.placement") ||
@@ -470,11 +473,20 @@ func TestDifferentialModelMetadata(t *testing.T) {
 		"/_localbase/models?sort=fit", "/_localbase/models/no-such-model"} {
 		var bodies []any
 		var statuses []int
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range []*harness.Target{ts, gw} {
+			if tg == nil {
+				continue
+			}
 			r := harness.Do(t, "GET", tg.BaseURL+path, harness.Bearer(tg.Key), "")
 			var v any
 			json.Unmarshal(r.Body, &v)
 			bodies, statuses = append(bodies, v), append(statuses, r.Status)
+		}
+		// Go's answer, pinned without what the comparison with TS skips as volatile: live
+		// availability and runtime state, and what follows them.
+		harness.PinJSON(t, path, map[string]any{"status": statuses[len(statuses)-1], "body": harness.PruneJSON(bodies[len(bodies)-1], "", volatile)})
+		if ts == nil {
+			continue
 		}
 		if statuses[0] != statuses[1] {
 			t.Errorf("%s: status %d vs %d", path, statuses[0], statuses[1])
@@ -484,7 +496,7 @@ func TestDifferentialModelMetadata(t *testing.T) {
 			if len(d) > 15 {
 				d = append(d[:15], fmt.Sprintf("... %d more", len(d)-15))
 			}
-			t.Errorf("%s differs (%s vs %s):\n  %s", path, harness.Targets(t)[0].Name, harness.Targets(t)[1].Name, strings.Join(d, "\n  "))
+			t.Errorf("%s differs (%s vs %s):\n  %s", path, ts.Name, gw.Name, strings.Join(d, "\n  "))
 		}
 	}
 }

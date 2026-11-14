@@ -13,7 +13,7 @@ import (
 
 // TestCLIVoices compares `voices list|add|remove` on twin roots.
 func TestCLIVoices(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	for i, impl := range []string{"ts", "go"} {

@@ -201,7 +201,7 @@ uncovered, since this ran on macOS.
 | JSONL redaction | `TestEventsGolden`, `TestMetricAttributes`, `TestAdminAuditRedaction` | Guarded |
 | **JSONL rotation** | `rotate` 0% | **GAP** |
 | **Service stderr bound** | `BoundServiceStderr` 0%; `InspectServiceStderr` via `TestCLIDiagnostics` **D** | **GAP** |
-| Logs CLI | `TestCLILogs` **D**, `TestTSReadsGoLogs` **D**; `Follow`, `Human` 0% | Partial |
+| Logs CLI | `TestCLILogs` **D** (Go's filters checked on their own since step 7's R3a), `TestTSReadsGoLogs` **D** (retired with TS in R3a); `Follow`, `Human` 0% | Partial |
 | OTLP | `TestExportToCollector`, `TestRatioSamplerGolden`, `TestShutdownWithHungCollector`, and others; `TestDifferentialOTLP` **D**; `TestRealCollector` **R** | Guarded |
 | Diagnostics bundle | `TestCLIDiagnostics` **D**, `TestRunCheckpointsStayOutOfBundles` | Guarded, mostly by hand |
 | Error kinds on requests | `TestHTTPRequestLogsErrorKind` | Guarded |
@@ -264,7 +264,7 @@ excluded (the FE thread owns it).
 | Oversized files | `gateway/runs.go` 1082 (now the `gateway/runs` package), `service/service.go` 1007, `gateway/manage.go` 943 (now `gateway/admin/keys/keys.go`), `hub/entry.go` 886, `runtime/llm.go` 843 | Split by responsibility |
 | Duplicate helpers | `contains` ×5, `writePrivate` ×3, `jsNumber` ×3, `fileExists` ×2, `jsonUnmarshal` ×2, `localeCompare` ×2, `number` ×2, `utf16Len` ×2, `nowISO` ×2, `uuid` ×2 | `slices.Contains`; a small `internal/fsutil` |
 | Error envelopes | `writeError` plus hand-written: `gateway/manage.go:47,120` (now `gateway/admin/keys/keys.go`), `unload.go:59` (now `gateway/admin/models`), `relay.go:621,630` (now `gateway/infer`), `auth.Deny`. Some are TS's exact shape | One helper with an extras field; keep the TS shapes |
-| Log attributes | `model_id` ×23, `model` ×12, `modelId` ×4; `durationMs`, `duration_ms`. 6 log calls have no `event` | Settle on `model_id`, `duration_ms`. **Log names can be a contract: check `TestTSReadsGoLogs` first** |
+| Log attributes | `model_id` ×23, `model` ×12, `modelId` ×4; `durationMs`, `duration_ms`. 6 log calls have no `event` | Settle on `model_id`, `duration_ms`. **Log names were a contract with TS's reader (`TestTSReadsGoLogs`, retired with TS in step 7's R3a)** |
 | Config and env access | About 20 `LOCALBASE_*` variables read directly across packages | One place, with a tested reference |
 | Context | 109 `context.Background()` outside tests | Thread the caller's where one exists; many are legitimate |
 | Goroutines | 21 `go func` sites; `LLM.watch` isn't waited on by `Close`; **no leak check anywhere** | Own each; add a goleak-style check per package. **Stdlib only: the project keeps to one module dependency, so this will be a small helper, not a new module** |

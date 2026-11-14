@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -15,7 +14,7 @@ import (
 var goOwnIssuer = regexp.MustCompile(`^\.data\.(user|users\[\d+\]|policy\.bindings\[[01]\])\.issuer$`)
 
 func TestCLIAccess(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	t.Setenv("CONTRACT_OIDC_SECRET", "shh")
@@ -110,8 +109,7 @@ func TestCLIAccess(t *testing.T) {
 		compareCLI(t, roots, c)
 	}
 	// Both roots now have no provider and no policy: clearing differs on purpose (tsClearNeedsProvider).
-	tsRes := runCLI(t, "ts", ts, "--json", "access", "policy", "clear")
-	if tsRes.code != 2 || !strings.Contains(tsRes.stdout+tsRes.stderr, tsClearNeedsProvider) {
+	if tsRes := runCLI(t, "ts", ts, "--json", "access", "policy", "clear"); tsLive() && (tsRes.code != 2 || !strings.Contains(tsRes.stdout+tsRes.stderr, tsClearNeedsProvider)) {
 		t.Errorf("ts policy clear with no provider: want exit 2 and %q, got %d %s%s", tsClearNeedsProvider, tsRes.code, tsRes.stdout, tsRes.stderr)
 	}
 	if goRes := runCLI(t, "go", gr, "--json", "access", "policy", "clear"); goRes.code != 0 || !strings.Contains(goRes.stdout, `"cleared":false`) {

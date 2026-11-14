@@ -24,7 +24,8 @@ import (
 // service: restart-required applies use --restart never, and the automatic
 // restart refusal runs against the foreground contract gateways.
 func TestCLIConfigDeclarative(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
+	harness.PinValues(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	docs := fsguard.ScratchDir(t)
@@ -147,7 +148,9 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	if res := runCLI(t, "go", ts, "--json", "config", "show"); res.code != 0 || !strings.Contains(res.stdout, `"pendingRestart":true`) {
 		t.Errorf("go reading the TS root: %d %s", res.code, res.stdout)
 	}
-	if res := runCLI(t, "ts", gr, "--json", "config", "show"); res.code != 1 || strings.TrimSpace(res.stdout) != tsCannotReadGoRoot {
+	if !tsLive() {
+		// The twin is Go itself (golden_test.go), which reads Go's root.
+	} else if res := runCLI(t, "ts", gr, "--json", "config", "show"); res.code != 1 || strings.TrimSpace(res.stdout) != tsCannotReadGoRoot {
 		t.Errorf("ts reading the Go root: want the named refusal (exit 1) %s, got %d %s", tsCannotReadGoRoot, res.code, res.stdout)
 	}
 	// Human output: plan lines and the rendered document. Go's read-copy notice is a named difference.
@@ -159,7 +162,7 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	} {
 		a, b := runCLI(t, "ts", ts, args...), runCLI(t, "go", gr, args...)
 		if a.code != b.code || strings.ReplaceAll(a.stdout, ts, "<root>") != strings.ReplaceAll(b.stdout, gr, "<root>") ||
-			strings.ReplaceAll(a.stderr, ts, "<root>") != strings.ReplaceAll(notices.strip(b.stderr), gr, "<root>") {
+			strings.ReplaceAll(notices.stripTwin(a.stderr), ts, "<root>") != strings.ReplaceAll(notices.strip(b.stderr), gr, "<root>") {
 			t.Errorf("%v:\n ts %d %q %q\n go %d %q %q", args, a.code, a.stdout, a.stderr, b.code, b.stdout, b.stderr)
 		}
 	}
@@ -186,9 +189,12 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	slices.Sort(tsFiles)
 	slices.Sort(goFiles)
 	wantGo := append(slices.Clone(tsFiles), goOnlyRootFiles...)
+	if !tsLive() {
+		wantGo = slices.Clone(tsFiles) // the twin is Go itself (golden_test.go)
+	}
 	slices.Sort(wantGo)
 	for _, f := range goOnlyRootFiles {
-		if slices.Contains(tsFiles, f) {
+		if tsLive() && slices.Contains(tsFiles, f) {
 			t.Errorf("fresh TS root has %s, a named Go-only file", f)
 		}
 	}
@@ -207,9 +213,23 @@ func TestCLIConfigDeclarative(t *testing.T) {
 }
 
 // compareRaw compares the validation message before redaction (the CLI
-// replaces messages containing "input:" and similar wholesale).
+// replaces messages containing "input:" and similar wholesale) with TS's, when TS runs, and pins
+// Go's (harness.PinJSON).
 func compareRaw(t *testing.T, path string) {
 	t.Helper()
+	cat, err := catalog.LoadWithFormer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _ := os.ReadFile(path)
+	got := "OK"
+	if _, err := conf.ParseDocument(string(text), cat); err != nil {
+		got = err.Error()
+	}
+	harness.PinJSON(t, "validation message: "+filepath.Base(path), got)
+	if !tsLive() {
+		return
+	}
 	script := `import { readFileSync } from "node:fs";
 import { parseConfiguration } from "./src/domains/config/declarative";
 try { parseConfiguration(readFileSync(process.argv.at(-1)!, "utf8")); console.log("OK"); }
@@ -221,15 +241,6 @@ catch (e) { console.log((e as Error).message); }`
 	if err != nil {
 		t.Fatalf("bun: %v", err)
 	}
-	cat, err := catalog.LoadWithFormer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	text, _ := os.ReadFile(path)
-	got := "OK"
-	if _, err := conf.ParseDocument(string(text), cat); err != nil {
-		got = err.Error()
-	}
 	if got != strings.TrimSpace(string(want)) {
 		t.Errorf("%s:\n go %s\n ts %s", filepath.Base(path), got, want)
 	}
@@ -239,7 +250,7 @@ catch (e) { console.log((e as Error).message); }`
 // a restart-required apply is refused before saving, and an unchanged
 // document with --wait waits for its readiness.
 func TestCLIConfigForegroundGateway(t *testing.T) {
-	harness.RequireTS(t)
+	eachCLI(t)
 	for _, tg := range harness.Targets(t) {
 		t.Run(tg.Name, func(t *testing.T) {
 			shown := runCLI(t, tg.Name, tg.Root, "--json", "config", "show")

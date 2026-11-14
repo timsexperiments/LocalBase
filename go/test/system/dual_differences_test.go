@@ -99,3 +99,12 @@ func lastLogLine(path, marker string) string {
 	}
 	return fmt.Sprintf("(no %s in %s)", marker, path)
 }
+
+// stripTwin takes goReadCopyNotice out of the twin's stderr when the twin is Go itself (a pinned
+// test under -impl=go, golden_test.go): TS never prints it.
+func (n *readCopyNotices) stripTwin(twinStderr string) string {
+	if tsLive() {
+		return twinStderr
+	}
+	return strings.ReplaceAll(twinStderr, goReadCopyNotice, "")
+}
