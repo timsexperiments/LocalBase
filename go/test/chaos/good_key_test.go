@@ -14,7 +14,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // When the database cannot answer, someone holding something valid must not be told it is not:

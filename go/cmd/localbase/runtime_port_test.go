@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // freeRun finds n free ports in a row, in this test process's part of the test block. They are

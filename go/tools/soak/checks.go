@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // Budgets for growth between the first and the last checkpoint: the gateway

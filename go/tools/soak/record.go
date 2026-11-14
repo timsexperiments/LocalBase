@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // violation is one thing the gateway must not do.

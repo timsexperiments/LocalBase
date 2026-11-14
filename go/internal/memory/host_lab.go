@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// The reliability lab's host (go/tools/lab): a localbase_lab build only, never
+// The reliability lab's host (go/test/lab): a localbase_lab build only, never
 // a release. When LOCALBASE_LAB_HOST_FILE names a file, the gateway reads its
 // memory from that file, so a harness can change available memory and pressure
 // under a real process without using any memory. Topology is read once, as on

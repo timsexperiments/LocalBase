@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // A test run twice in one process (go test -count=2) starts its gateway under the same name both
