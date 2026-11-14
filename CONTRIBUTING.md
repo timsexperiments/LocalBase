@@ -110,7 +110,7 @@ LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI -arg
 - **Differential tests** compare the Go and TypeScript gateways with `-impl=both`. They need Bun and `LOCALBASE_CONTRACT_MODELS`.
 - **Real inference** is opt-in through `LOCALBASE_CONTRACT_*` variables and is never required for a PR.
 - **A test that sends more than a few thousand requests** goes through `testutil.Flood`, which keeps its connections and stops itself if it can't. Closed connections hold local ports that everything on the machine shares, so a flood that opens one per request can make other programs' connections fail.
-- **Goldens** in `testdata/` are generated from the TypeScript code by `go/tools/golden/`. Don't edit them by hand.
+- **Goldens** in `testdata/` were recorded from the TypeScript code and are now Go's own. A change to one is a behaviour change: say why in the PR, and reviewers read the diff.
 
 For a parser of anything from outside, add a fuzz target to `go/scripts/fuzz.sh`. `go test` runs its seeds, and the script searches for new inputs on demand.
 

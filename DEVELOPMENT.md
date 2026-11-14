@@ -20,7 +20,7 @@ LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server
 | `go/internal/service/` | launchd and systemd user units |
 | `go/internal/obs/`, `otlp/` | Logs, redaction and OTLP export |
 | `go/test/contract/` | Black-box HTTP contract suite |
-| `go/tools/` | Check scripts and golden generators |
+| `go/tools/` | Check scripts and test tools |
 | `docs/` | User documentation |
 | `scripts/release/`, `packaging/` | Go release build, installer test, Homebrew template |
 | `src/`, `drizzle/`, most of `scripts/` | Legacy TypeScript version and what it needs. See below |
@@ -59,7 +59,7 @@ sequenceDiagram
 
 ## The legacy TypeScript tree
 
-`src/` is the version Go replaced. It stays as a rollback path and as the source of the catalog and runtime pins that `go generate` copies, and golden test data comes from it. See the retirement plan in `docs/typescript-retirement.md`.
+`src/` is the version Go replaced. It stays as a rollback path and as the source of the catalog and runtime pins that `go generate` copies, and the golden test data was recorded from it. See the retirement plan in `docs/typescript-retirement.md`.
 
 ## CI
 

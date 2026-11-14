@@ -1874,7 +1874,7 @@ Step 1:
   could select one. TS runs them on the Metal and Vulkan sd-server builds,
   and Go now does too.
 - **Converter.** TS's pinned ffmpeg builds, in the Go runtime manifest.
-  `TestFFmpegPinsMatchTS` (`tools/golden/ffmpeg.ts`) keeps them equal. The
+  `TestFFmpegPinsMatchTheManifest` (pins recorded by the former `tools/golden/ffmpeg.ts`) keeps them equal. The
   managed installer gained the `binary` format and `copy` support files
   (the license and notices). The command line, the 120 s deadline, the
   frame-count check and the `ftyp` check are TS's. Like Go's other

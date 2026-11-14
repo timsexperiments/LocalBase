@@ -7,10 +7,11 @@ import (
 	"testing"
 )
 
-// TestFFmpegPinsMatchTS: the Go manifest pins the TS video converter
-// releases (tools/golden/ffmpeg.ts) for every target, so either
-// implementation installs and verifies the same ffmpeg.
-func TestFFmpegPinsMatchTS(t *testing.T) {
+// TestFFmpegPinsMatchTheManifest: the Go manifest pins the video converter
+// releases in testdata/ffmpeg-pins.json for every target. The pins were
+// recorded from the TS converter (tools/golden/ffmpeg.ts, removed), so a 0.1.0
+// rollback installs and verifies the same ffmpeg.
+func TestFFmpegPinsMatchTheManifest(t *testing.T) {
 	raw, err := os.ReadFile("testdata/ffmpeg-pins.json")
 	if err != nil {
 		t.Fatal(err)
