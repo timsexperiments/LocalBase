@@ -58,9 +58,8 @@ jobs:
             echo go=true >> "$GITHUB_OUTPUT"; exit 0
           fi
           # The Go tree and what it reads, this workflow and its setup action, and what bun-scripts
-          # tests: the release and notice scripts, the Kokoro runtime, src/ (which they still import
-          # until it goes) and the Bun manifest.
-          if printf '%s\n' "$files" | grep -qE '^(go/|drizzle/|src/|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
+          # tests: the release and notice scripts, the Kokoro runtime and the Bun manifest.
+          if printf '%s\n' "$files" | grep -qE '^(go/|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
             echo go=true >> "$GITHUB_OUTPUT"
           else
             echo go=false >> "$GITHUB_OUTPUT"
