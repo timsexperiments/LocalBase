@@ -3,11 +3,12 @@
 # local-base binary as a systemd user service inside a disposable Debian
 # container with systemd as PID 1, then removes the container and image.
 #
-#   test/platform/systemd-check.sh            # from go/, needs Docker and bun
+#   test/platform/systemd-check.sh            # from go/, needs Docker
 #
 # Inside the container, as a non-root user with lingering enabled, on a
 # scratch root (so a scratch unit label): start, status, the installed unit
-# against TS's renderer for the same manifest, a pending change that restart
+# against the renderer for the same manifest (test/platform/unitrender, whose
+# output service.TestUnitsMatchTS pins with goldens recorded from TS), a pending change that restart
 # applies (config apply --restart never), the gateway's stderr in the
 # journal, stop, and removal. No GPU, no published ports.
 set -uo pipefail
@@ -84,12 +85,12 @@ for i in $(seq 1 30); do
 done
 [ -n "$health" ] && ok "gateway healthy on ${port:-2273}" || bad "gateway not answering /health"
 
-step "the installed unit is what TS renders for the same manifest"
-as_lb cat "$unit" > "$work/unit.go"
+step "the installed unit is what the pinned renderer makes for the same manifest"
+as_lb cat "$unit" > "$work/unit.installed"
 as_lb cat "$root/service/manifest.json" > "$work/manifest.json"
-(cd .. && LOCALBASE_ROOT=/nonexistent bun run go/tools/golden/systemd-unit.ts < "$work/manifest.json") > "$work/unit.ts"
-if cmp -s "$work/unit.go" "$work/unit.ts"; then ok "byte-identical to TS ($(wc -c < "$work/unit.go" | tr -d ' ') bytes)"; else bad "unit differs from TS"; diff "$work/unit.ts" "$work/unit.go"; fi
-grep -q '^Environment="LOCALBASE_SERVICE_TOKEN=' "$work/unit.go" && grep -q '^StandardError=journal$' "$work/unit.go" && ok "token and journal stderr in unit" || bad "unit content"
+go run ./test/platform/unitrender < "$work/manifest.json" > "$work/unit.rendered" || bad "unitrender"
+if cmp -s "$work/unit.installed" "$work/unit.rendered"; then ok "byte-identical to the renderer ($(wc -c < "$work/unit.installed" | tr -d ' ') bytes)"; else bad "unit differs from the renderer"; diff "$work/unit.rendered" "$work/unit.installed"; fi
+grep -q '^Environment="LOCALBASE_SERVICE_TOKEN=' "$work/unit.installed" && grep -q '^StandardError=journal$' "$work/unit.installed" && ok "token and journal stderr in unit" || bad "unit content"
 
 step "a pending change is applied by restart"
 lb config show > "$work/doc.toml"
