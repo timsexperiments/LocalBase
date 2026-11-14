@@ -11,13 +11,16 @@ guarded, but named branches aren't. **GAP** nothing automated fails if it breaks
 
 | Mark | Runs | Meaning |
 |---|---|---|
-| (none) | every PR, in `go.yml` | a unit test, or a contract test under `-impl=go` |
-| **D** | only by hand: `-impl=both` | needs the TS gateway |
+| (none) | every PR, in `go.yml` | a unit test, or a contract test |
+| **D** | every PR, in `go.yml`, since step 7 | compared Go with TS; now pins Go's results in goldens (R3a), on linux/amd64 and darwin/arm64 (R3b) |
 | **R** | only by hand: real models | needs `LOCALBASE_CONTRACT_RUNTIMES` and weights |
 
 ## 1. The biggest gap: CI never compares Go with TS
 
-`go.yml` runs `scripts/contract.sh -args -impl=go`. Every differential and most CLI tests
+**Closed by step 7:** TS is retired, go-dual.yml is gone, and the tests that compared the two pin Go's
+results in goldens that go.yml's contract jobs check on every PR. What follows is the record.
+
+`go.yml` ran `scripts/contract.sh -args -impl=go`. Every differential and most CLI tests
 need TS and are **skipped in CI**. `ci.yml`'s `bun test` runs only on PRs into main and pushes to main. So
 "the dual suite stays green" is currently only true when someone runs it by hand, and
 nothing in CI would stop a PR breaking TS parity, including this cleanup.

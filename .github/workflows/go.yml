@@ -184,7 +184,7 @@ jobs:
         # scripts/contract.sh keeps a failing run's full go test -json stream.
         env:
           LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
-        run: scripts/contract.sh -args -impl=go
+        run: scripts/contract.sh
       - name: Keep the failing contract run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -357,7 +357,7 @@ jobs:
       - name: Contract and system suites against the Go gateway
         env:
           LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
-        run: scripts/contract.sh -args -impl=go
+        run: scripts/contract.sh
       - name: Keep the failing contract run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

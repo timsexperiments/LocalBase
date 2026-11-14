@@ -2,15 +2,12 @@
 # Statement coverage per package: unit tests plus the contract suite, which
 # drives the Go binary from outside, so neither alone is the true figure.
 #
-#   scripts/coverage.sh            # unit tests + contract -impl=go
-#   scripts/coverage.sh both       # + the TS differential and CLI tests; needs
-#                                # LOCALBASE_CONTRACT_MODELS for the TS gateway
+#   scripts/coverage.sh            # unit tests + the contract and system suites
 #
 # Runs no real models unless LOCALBASE_CONTRACT_RUNTIMES is set. Prints the table
 # and leaves merged.out in $COVERAGE_DIR (default: a new temp dir).
 set -uo pipefail
 cd "$(dirname "$0")/.."
-impl=${1:-go}
 dir=${COVERAGE_DIR:-$(mktemp -d)}
 mkdir -p "$dir/bin"
 go=$(go env GOROOT)/bin/go
@@ -23,7 +20,7 @@ tested=$("$go" list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end
 "$go" test $tested -count=1 -coverpkg=github.com/timsexperiments/LocalBase/go/... \
   -coverprofile="$dir/unit.out" -covermode=atomic >"$dir/unit.log" 2>&1 || { tail -30 "$dir/unit.log"; exit 1; }
 LOCALBASE_CONTRACT_COVERDIR="$dir/bin" LOCALBASE_CONTRACT_LOGS="$dir/runs" \
-  scripts/contract.sh -args -impl="$impl" >"$dir/contract.log" 2>&1 || { tail -30 "$dir/contract.log"; exit 1; }
+  scripts/contract.sh >"$dir/contract.log" 2>&1 || { tail -30 "$dir/contract.log"; exit 1; }
 "$go" tool covdata textfmt -i="$dir/bin" -o="$dir/contract.out" || exit 1
 "$go" run ./tools/covmerge -o "$dir/merged.out" "$dir/unit.out" "$dir/contract.out"
 echo "profiles: $dir"

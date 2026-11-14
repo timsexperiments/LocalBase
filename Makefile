@@ -30,7 +30,7 @@ race: ## Unit tests with the race detector, as CI runs them
 	cd go && go test -race ./internal/... ./cmd/...
 
 contract: ## HTTP contract suite against the Go gateway
-	cd go && scripts/contract.sh -args -impl=go
+	cd go && scripts/contract.sh
 
 ui: ## Compiled CSS is current, and the browser JavaScript tests pass (needs Bun)
 	bun install --frozen-lockfile
