@@ -1,0 +1,82 @@
+{
+  "calls": [
+    {
+      "args": [
+        "--json",
+        "init"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"configuration\":{\"activeImageModel\":\"dreamshaper-8-lcm\",\"activeLlmModel\":\"qwen3.5-4b-q4_k_m\",\"activeSttModel\":\"whisper-base-q8_0\",\"activeTtsModel\":\"\",\"activeVideoModel\":\"\",\"ctxMode\":\"auto\",\"ctxSize\":131072,\"hfTokenConfigured\":false,\"host\":\"127.0.0.1\",\"imageModelsDir\":\"\u003croot\u003e/models/image\",\"llmModelsDir\":\"\u003croot\u003e/models/llm\",\"memory\":{\"acceleratorReserve\":{\"percent\":10,\"minimumGb\":2},\"systemReserve\":{\"percent\":15,\"minimumGb\":8}},\"observability\":{\"enabled\":false,\"endpoint\":\"\",\"persistedEndpoint\":\"\",\"sampleRatio\":1,\"sampler\":\"parentbased_traceidratio\",\"source\":\"disabled\"},\"parallel\":\"auto\",\"port\":18000,\"root\":\"\u003croot\u003e\",\"selectedImageModels\":[\"dreamshaper-8-lcm\"],\"selectedLlmModels\":[\"qwen3.5-4b-q4_k_m\"],\"selectedSttModels\":[\"whisper-base-q8_0\"],\"selectedTtsModels\":[],\"selectedVideoModels\":[],\"sttHost\":\"127.0.0.1\",\"sttModelsDir\":\"\u003croot\u003e/models/stt\",\"sttPort\":18080,\"ttsModelsDir\":\"\u003croot\u003e/models/tts\",\"videoModelsDir\":\"\u003croot\u003e/models/video\"}},\"ok\":true}\n",
+      "stderr": "Initialized local-base at \u003croot\u003e\nLLM directory: \u003croot\u003e/models/llm\nSTT directory: \u003croot\u003e/models/stt\n"
+    },
+    {
+      "args": [
+        "--json",
+        "diagnostics",
+        "--output",
+        "\u003ctmp\u003e/003/go.zip"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"archive\":{\"bytes\":\"\u003cbytes\u003e\",\"entries\":2,\"path\":\"\u003ctmp\u003e/003/go.zip\"}},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nCreated diagnostics bundle: \u003ctmp\u003e/003/go.zip\nService stderr: 25 bytes captured at \u003croot\u003e/logs/service-stderr.log. It holds unredacted gateway crash output, so the bundle records only its size; review it before sharing.\nCatalog feed: off\nCatalog file skipped (user): broken.json: The patched entry is invalid: storageGb: Invalid input: expected number, received string\nMemory for qwen3.5-4b-q4_k_m: 5 GB (measured), \u003chost\u003e\nMemory for whisper-base-q8_0: 1 GB (estimate), \u003chost\u003e\nCatalog trust for whisper-base-q8_0: modified (user tier; changed repositoryRevision, notes)\nMemory for dreamshaper-8-lcm: 5 GB (measured), \u003chost\u003e\n",
+      "masks": [
+        "diagnostics fit"
+      ]
+    },
+    {
+      "args": [
+        "--json",
+        "diagnostics",
+        "--output",
+        "\u003ctmp\u003e/003/go-none.zip"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"archive\":{\"bytes\":\"\u003cbytes\u003e\",\"entries\":2,\"path\":\"\u003ctmp\u003e/003/go-none.zip\"}},\"ok\":true}\n",
+      "stderr": "Created diagnostics bundle: \u003ctmp\u003e/003/go-none.zip\n"
+    },
+    {
+      "args": [
+        "--json",
+        "diagnostics",
+        "--output",
+        "\u003ctmp\u003e/003/exists.zip"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"operational_error\",\"message\":\"Secure diagnostics archive publication; output already exists failed.\"},\"ok\":false}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: Secure diagnostics archive publication; output already exists failed.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "diagnostics",
+        "--output",
+        "\u003ctmp\u003e/003/report.txt"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"operational_error\",\"message\":\"Diagnostics output must end in .zip.\"},\"ok\":false}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: Diagnostics output must end in .zip.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "diagnostics",
+        "--output",
+        "\u003ctmp\u003e/003/missing-dir/x.zip"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"operational_error\",\"message\":\"Secure diagnostics directory open failed.\"},\"ok\":false}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: Secure diagnostics directory open failed.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "diagnostics",
+        "--output",
+        ""
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nCreate a redacted LocalBase diagnostics bundle\n\nUSAGE local-base diagnostics [OPTIONS]\n\nOPTIONS\n\n        --root=\u003cpath\u003e    LocalBase data directory\n    --non-interactive    Never open interactive prompts\n               --json    Emit machine-readable JSON\n  --output=\u003cpath.zip\u003e    Output ZIP path\n\nEXAMPLES\n\n  local-base diagnostics\n  local-base diagnostics --output report.zip\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    }
+  ]
+}

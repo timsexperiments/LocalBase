@@ -1,0 +1,456 @@
+{
+  "/v1/models": [
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "code-generation",
+          "source": "declared"
+        },
+        {
+          "id": "code-editing",
+          "source": "declared"
+        }
+      ],
+      "context_budget": {
+        "configured_ceiling": 65536,
+        "effective_context": 32768,
+        "launch_context": 32768,
+        "mode": "auto",
+        "model_context_window": 32768,
+        "parallel_slots": 1,
+        "process_override": null,
+        "reasons": [
+          "Context mode \"auto\" reduced the 65,536 ceiling to the memory-safe recommendation of 32,768; run \"local-base configure --ctx-mode explicit\" to launch at the ceiling."
+        ],
+        "recommended_max": 32768,
+        "training_context": null
+      },
+      "context_length": 32768,
+      "created": 1670000000,
+      "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+        "min_vram_gb": 3,
+        "observed_peak_bytes": null,
+        "source": "estimate",
+        "system_memory_gb": 64
+      },
+      "name": "Qwen2.5-Coder",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "decisions"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "decision",
+          "source": "declared"
+        },
+        {
+          "id": "long-context",
+          "source": "declared"
+        }
+      ],
+      "context_budget": {
+        "configured_ceiling": 65536,
+        "effective_context": 8192,
+        "launch_context": 8192,
+        "mode": "auto",
+        "model_context_window": 262144,
+        "parallel_slots": 1,
+        "process_override": null,
+        "reasons": [
+          "Decision models evaluate a prompt as one micro-batch, so each slot is capped at 8,192 tokens to bound the compute buffer."
+        ],
+        "recommended_max": 131072,
+        "training_context": null
+      },
+      "context_length": 8192,
+      "created": 1670000000,
+      "id": "clef-flash-q4_k_m",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+        "min_vram_gb": 10,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Clef",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "embeddings"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "embeddings",
+          "source": "declared"
+        },
+        {
+          "id": "multilingual",
+          "source": "declared"
+        },
+        {
+          "id": "code-retrieval",
+          "source": "declared"
+        }
+      ],
+      "context_budget": {
+        "configured_ceiling": 65536,
+        "effective_context": 32768,
+        "launch_context": 32768,
+        "mode": "auto",
+        "model_context_window": 32768,
+        "parallel_slots": 1,
+        "process_override": null,
+        "reasons": [
+          "Context mode \"auto\" reduced the 65,536 ceiling to the memory-safe recommendation of 32,768; run \"local-base configure --ctx-mode explicit\" to launch at the ceiling."
+        ],
+        "recommended_max": 32768,
+        "training_context": null
+      },
+      "context_length": 32768,
+      "created": 1670000000,
+      "id": "qwen3-embedding-0.6b-q8_0",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "ctx=8192;slots=1;kv=f16/f16",
+        "min_vram_gb": 3,
+        "observed_peak_bytes": null,
+        "source": "estimate",
+        "system_memory_gb": 64
+      },
+      "name": "Qwen3-Embedding",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "speech-to-text",
+          "source": "declared"
+        }
+      ],
+      "created": 1670000000,
+      "id": "whisper-base-en-q8_0",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 1,
+        "observed_peak_bytes": null,
+        "source": "estimate",
+        "system_memory_gb": 64
+      },
+      "name": "Whisper",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "audio"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-speech",
+          "source": "declared"
+        }
+      ],
+      "created": 1670000000,
+      "id": "qwen3-tts-1.7b-base-q4_k_m",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 5,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Qwen3-TTS",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "audio"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-speech",
+          "source": "declared"
+        }
+      ],
+      "created": 1670000000,
+      "id": "kokoro-82m-v1.0-q8",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 1,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Kokoro",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "image"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-image",
+          "source": "detected"
+        }
+      ],
+      "created": 1670000000,
+      "id": "dreamshaper-8-lcm",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 5,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Stable-Diffusion",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "image"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-image",
+          "source": "detected"
+        }
+      ],
+      "created": 1670000000,
+      "id": "flux1-schnell-q4_0",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 15,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "FLUX.1",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "image"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-image",
+          "source": "declared"
+        }
+      ],
+      "created": 1670000000,
+      "id": "realvis-xl-v5.0",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 16,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Stable-Diffusion-XL",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "image"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-image",
+          "source": "declared"
+        },
+        {
+          "id": "image-to-image",
+          "source": "declared"
+        }
+      ],
+      "created": 1670000000,
+      "id": "sdxl-turbo",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 16,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Stable-Diffusion-XL",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "image"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-image",
+          "source": "declared"
+        },
+        {
+          "id": "image-to-image",
+          "source": "declared"
+        }
+      ],
+      "created": 1670000000,
+      "id": "juggernaut-xl-v9",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 16,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Stable-Diffusion-XL",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "video"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-video",
+          "source": "detected"
+        }
+      ],
+      "created": 1670000000,
+      "id": "wan2.1-t2v-1.3b-q8_0",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 8,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "Wan2.1-T2V",
+      "object": "model",
+      "owned_by": "local-base"
+    },
+    {
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "video"
+        ]
+      },
+      "capabilities": [
+        {
+          "id": "text-to-video",
+          "source": "detected"
+        },
+        {
+          "id": "image-to-video",
+          "source": "detected"
+        }
+      ],
+      "created": 1670000000,
+      "id": "fastwan2.2-ti2v-5b-q6_k",
+      "memory": {
+        "fit": "fits",
+        "launch_shape": "default",
+        "min_vram_gb": 8,
+        "observed_peak_bytes": null,
+        "source": "measured",
+        "system_memory_gb": 64
+      },
+      "name": "FastWan2.2-TI2V",
+      "object": "model",
+      "owned_by": "local-base"
+    }
+  ]
+}

@@ -1,0 +1,865 @@
+{
+  "calls": [
+    {
+      "args": [
+        "--json",
+        "init"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"configuration\":{\"activeImageModel\":\"dreamshaper-8-lcm\",\"activeLlmModel\":\"qwen3.5-4b-q4_k_m\",\"activeSttModel\":\"whisper-base-q8_0\",\"activeTtsModel\":\"\",\"activeVideoModel\":\"\",\"ctxMode\":\"auto\",\"ctxSize\":131072,\"hfTokenConfigured\":false,\"host\":\"127.0.0.1\",\"imageModelsDir\":\"\u003croot\u003e/models/image\",\"llmModelsDir\":\"\u003croot\u003e/models/llm\",\"memory\":{\"acceleratorReserve\":{\"percent\":10,\"minimumGb\":2},\"systemReserve\":{\"percent\":15,\"minimumGb\":8}},\"observability\":{\"enabled\":false,\"endpoint\":\"\",\"persistedEndpoint\":\"\",\"sampleRatio\":1,\"sampler\":\"parentbased_traceidratio\",\"source\":\"disabled\"},\"parallel\":\"auto\",\"port\":18000,\"root\":\"\u003croot\u003e\",\"selectedImageModels\":[\"dreamshaper-8-lcm\"],\"selectedLlmModels\":[\"qwen3.5-4b-q4_k_m\"],\"selectedSttModels\":[\"whisper-base-q8_0\"],\"selectedTtsModels\":[],\"selectedVideoModels\":[],\"sttHost\":\"127.0.0.1\",\"sttModelsDir\":\"\u003croot\u003e/models/stt\",\"sttPort\":18080,\"ttsModelsDir\":\"\u003croot\u003e/models/tts\",\"videoModelsDir\":\"\u003croot\u003e/models/video\"}},\"ok\":true}\n",
+      "stderr": "Initialized local-base at \u003croot\u003e\nLLM directory: \u003croot\u003e/models/llm\nSTT directory: \u003croot\u003e/models/stt\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "show"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"document\":\"# Secrets and process overrides are omitted and preserved on apply.\\nversion = 1\\n\\n[gateway]\\nhost = \\\"127.0.0.1\\\"\\nport = 2273\\n\\n[runtime]\\nhost = \\\"127.0.0.1\\\"\\nport = 18000\\nctxSize = 131072\\nctxMode = \\\"auto\\\"\\nparallel = \\\"auto\\\"\\nsttHost = \\\"127.0.0.1\\\"\\nsttPort = 18080\\n\\n[models]\\nallowExperimental = false\\nselectedLlmModels = [\\\"qwen3.5-4b-q4_k_m\\\"]\\nselectedSttModels = [\\\"whisper-base-q8_0\\\"]\\nselectedTtsModels = []\\nselectedImageModels = [\\\"dreamshaper-8-lcm\\\"]\\nselectedVideoModels = []\\nactiveLlmModel = \\\"qwen3.5-4b-q4_k_m\\\"\\nactiveSttModel = \\\"whisper-base-q8_0\\\"\\nactiveTtsModel = \\\"\\\"\\nactiveImageModel = \\\"dreamshaper-8-lcm\\\"\\nactiveVideoModel = \\\"\\\"\\n\\n[memory]\\n\\n[memory.systemReserve]\\npercent = 15\\nminimumGb = 8\\n\\n[memory.acceleratorReserve]\\npercent = 10\\nminimumGb = 2\\n\",\"pendingRestart\":false},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "show"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"document\":\"# Secrets and process overrides are omitted and preserved on apply.\\nversion = 1\\n\\n[gateway]\\nhost = \\\"127.0.0.1\\\"\\nport = 2273\\n\\n[runtime]\\nhost = \\\"127.0.0.1\\\"\\nport = 18000\\nctxSize = 131072\\nctxMode = \\\"auto\\\"\\nparallel = \\\"auto\\\"\\nsttHost = \\\"127.0.0.1\\\"\\nsttPort = 18080\\n\\n[models]\\nallowExperimental = false\\nselectedLlmModels = [\\\"qwen3.5-4b-q4_k_m\\\"]\\nselectedSttModels = [\\\"whisper-base-q8_0\\\"]\\nselectedTtsModels = []\\nselectedImageModels = [\\\"dreamshaper-8-lcm\\\"]\\nselectedVideoModels = []\\nactiveLlmModel = \\\"qwen3.5-4b-q4_k_m\\\"\\nactiveSttModel = \\\"whisper-base-q8_0\\\"\\nactiveTtsModel = \\\"\\\"\\nactiveImageModel = \\\"dreamshaper-8-lcm\\\"\\nactiveVideoModel = \\\"\\\"\\n\\n[memory]\\n\\n[memory.systemReserve]\\npercent = 15\\nminimumGb = 8\\n\\n[memory.acceleratorReserve]\\npercent = 10\\nminimumGb = 2\\n\",\"pendingRestart\":false},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/activetts.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.activeTtsModel: must name a catalog tts model with compatible modalities; models.activeTtsModel: must also be present in its selected model list\"},\"ok\":false}\n",
+      "stderr": "Error: models.activeTtsModel: must name a catalog tts model with compatible modalities; models.activeTtsModel: must also be present in its selected model list\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/allowexp.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/allownum.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/bad1.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/badmodels.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.selectedLlmModels.0: must name a catalog llm model with compatible modalities; models.activeSttModel: must name a catalog stt model with compatible modalities; models.activeSttModel: must also be present in its selected model list\"},\"ok\":false}\n",
+      "stderr": "Error: models.selectedLlmModels.0: must name a catalog llm model with compatible modalities; models.activeSttModel: must name a catalog stt model with compatible modalities; models.activeSttModel: must also be present in its selected model list\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/ctxbig.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"runtime.ctxSize: Too big: expected number to be \\u003c=2147483647\"},\"ok\":false}\n",
+      "stderr": "Error: runtime.ctxSize: Too big: expected number to be \u003c=2147483647\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/ctxmode.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"runtime.ctxMode: Invalid option: expected one of \\\"auto\\\"|\\\"explicit\\\"\"},\"ok\":false}\n",
+      "stderr": "Error: runtime.ctxMode: Invalid option: expected one of \"auto\"|\"explicit\"\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/ctxsmall.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"runtime.ctxSize: Too small: expected number to be \\u003e=2048\"},\"ok\":false}\n",
+      "stderr": "Error: runtime.ctxSize: Too small: expected number to be \u003e=2048\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/dup.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.selectedTtsModels: must not contain duplicates\"},\"ok\":false}\n",
+      "stderr": "Error: models.selectedTtsModels: must not contain duplicates\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/empty.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"gateway.host: Too small: expected string to have \\u003e=1 characters; runtime.host: Too small: expected string to have \\u003e=1 characters\"},\"ok\":false}\n",
+      "stderr": "Error: gateway.host: Too small: expected string to have \u003e=1 characters; runtime.host: Too small: expected string to have \u003e=1 characters\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/emptyid.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.selectedTtsModels.0: Too small: expected string to have \\u003e=1 characters; models.selectedTtsModels.0: Too small: expected string to have \\u003e=1 characters; models.selectedTtsModels.0: must name a catalog tts model with compatible modalities\"},\"ok\":false}\n",
+      "stderr": "Error: models.selectedTtsModels.0: Too small: expected string to have \u003e=1 characters; models.selectedTtsModels.0: Too small: expected string to have \u003e=1 characters; models.selectedTtsModels.0: must name a catalog tts model with compatible modalities\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/experimental.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.selectedTtsModels.0: model is experimental or unsupported on this platform; models.selectedTtsModels.0: Experimental models require models.allowExperimental = true.\"},\"ok\":false}\n",
+      "stderr": "Error: models.selectedTtsModels.0: model is experimental or unsupported on this platform; models.selectedTtsModels.0: Experimental models require models.allowExperimental = true.\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/extra.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"gateway: Unrecognized keys: \\\"1\\\", \\\"zzz\\\", \\\"aaa\\\"\"},\"ok\":false}\n",
+      "stderr": "Error: gateway: Unrecognized keys: \"1\", \"zzz\", \"aaa\"\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/hostnum.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/itemtype.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/listtype.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/long.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"gateway.host: Too big: expected string to have \\u003c=253 characters; runtime.host: Too big: expected string to have \\u003c=253 characters\"},\"ok\":false}\n",
+      "stderr": "Error: gateway.host: Too big: expected string to have \u003c=253 characters; runtime.host: Too big: expected string to have \u003c=253 characters\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/memextra.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"memory: Unrecognized key: \\\"foo\\\"\"},\"ok\":false}\n",
+      "stderr": "Error: memory: Unrecognized key: \"foo\"\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/minneg.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"memory.systemReserve.minimumGb: Too small: expected number to be \\u003e=0\"},\"ok\":false}\n",
+      "stderr": "Error: memory.systemReserve.minimumGb: Too small: expected number to be \u003e=0\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/missing.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/modelsextra.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models: Unrecognized key: \\\"zzz\\\"\"},\"ok\":false}\n",
+      "stderr": "Error: models: Unrecognized key: \"zzz\"\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/noactive.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.activeLlmModel: Too small: expected string to have \\u003e=1 characters; models.selectedTtsModels.0: must name a catalog tts model with compatible modalities\"},\"ok\":false}\n",
+      "stderr": "Error: models.activeLlmModel: Too small: expected string to have \u003e=1 characters; models.selectedTtsModels.0: must name a catalog tts model with compatible modalities\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/noctxmode.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"runtime.ctxMode: Invalid option: expected one of \\\"auto\\\"|\\\"explicit\\\"\"},\"ok\":false}\n",
+      "stderr": "Error: runtime.ctxMode: Invalid option: expected one of \"auto\"|\"explicit\"\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/nollm.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.selectedLlmModels: Too small: expected array to have \\u003e=1 items; models.activeLlmModel: must also be present in its selected model list\"},\"ok\":false}\n",
+      "stderr": "Error: models.selectedLlmModels: Too small: expected array to have \u003e=1 items; models.activeLlmModel: must also be present in its selected model list\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/only.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/par5.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"runtime.parallel: Invalid input\"},\"ok\":false}\n",
+      "stderr": "Error: runtime.parallel: Invalid input\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/pct.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"memory.systemReserve.percent: Too big: expected number to be \\u003c=100\"},\"ok\":false}\n",
+      "stderr": "Error: memory.systemReserve.percent: Too big: expected number to be \u003c=100\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/pctinf.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/pctnan.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/port0.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"gateway.port: Too small: expected number to be \\u003e=1\"},\"ok\":false}\n",
+      "stderr": "Error: gateway.port: Too small: expected number to be \u003e=1\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/portbig.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"gateway.port: Too big: expected number to be \\u003c=65535\"},\"ok\":false}\n",
+      "stderr": "Error: gateway.port: Too big: expected number to be \u003c=65535\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/portfloat.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/portstr.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/rootextra.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/subtable.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"gateway: Unrecognized key: \\\"sub\\\"\"},\"ok\":false}\n",
+      "stderr": "Error: gateway: Unrecognized key: \"sub\"\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/syntax.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Invalid TOML configuration.\"},\"ok\":false}\n",
+      "stderr": "Error: Invalid TOML configuration.\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/v2.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/video.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.selectedVideoModels.0: must name a catalog video model with compatible modalities; models.selectedVideoModels.1: must name a catalog video model with compatible modalities; models.selectedVideoModels: must not contain duplicates; models.activeVideoModel: must name a catalog video model with compatible modalities\"},\"ok\":false}\n",
+      "stderr": "Error: models.selectedVideoModels.0: must name a catalog video model with compatible modalities; models.selectedVideoModels.1: must name a catalog video model with compatible modalities; models.selectedVideoModels: must not contain duplicates; models.activeVideoModel: must name a catalog video model with compatible modalities\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/vstring.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/ws.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"gateway.host: must not contain whitespace; runtime.host: must not contain whitespace\"},\"ok\":false}\n",
+      "stderr": "Error: gateway.host: must not contain whitespace; runtime.host: must not contain whitespace\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"configuration\":{\"version\":1,\"gateway\":{\"host\":\"127.0.0.1\",\"port\":2273},\"runtime\":{\"host\":\"127.0.0.1\",\"port\":18000,\"ctxSize\":131072,\"ctxMode\":\"auto\",\"parallel\":\"auto\",\"sttHost\":\"127.0.0.1\",\"sttPort\":18080},\"models\":{\"allowExperimental\":false,\"selectedLlmModels\":[\"qwen3.5-4b-q4_k_m\"],\"selectedSttModels\":[\"whisper-base-q8_0\"],\"selectedTtsModels\":[],\"selectedImageModels\":[\"dreamshaper-8-lcm\"],\"selectedVideoModels\":[],\"activeLlmModel\":\"qwen3.5-4b-q4_k_m\",\"activeSttModel\":\"whisper-base-q8_0\",\"activeTtsModel\":\"\",\"activeImageModel\":\"dreamshaper-8-lcm\",\"activeVideoModel\":\"\"},\"memory\":{\"systemReserve\":{\"percent\":15,\"minimumGb\":8},\"acceleratorReserve\":{\"percent\":10,\"minimumGb\":2}}},\"valid\":true},\"ok\":true}\n",
+      "stderr": "Configuration is valid (version 1).\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"configuration\":{\"version\":1,\"gateway\":{\"host\":\"127.0.0.1\",\"port\":2274},\"runtime\":{\"host\":\"127.0.0.1\",\"port\":18000,\"ctxSize\":65536,\"ctxMode\":\"auto\",\"parallel\":2,\"sttHost\":\"127.0.0.1\",\"sttPort\":18080},\"models\":{\"allowExperimental\":false,\"selectedLlmModels\":[\"qwen3.5-4b-q4_k_m\"],\"selectedSttModels\":[\"whisper-base-q8_0\"],\"selectedTtsModels\":[],\"selectedImageModels\":[\"dreamshaper-8-lcm\"],\"selectedVideoModels\":[],\"activeLlmModel\":\"qwen3.5-4b-q4_k_m\",\"activeSttModel\":\"whisper-base-q8_0\",\"activeTtsModel\":\"\",\"activeImageModel\":\"dreamshaper-8-lcm\",\"activeVideoModel\":\"\"},\"memory\":{\"systemReserve\":{\"percent\":12.5,\"minimumGb\":8},\"acceleratorReserve\":{\"percent\":10,\"minimumGb\":2}}},\"valid\":true},\"ok\":true}\n",
+      "stderr": "Configuration is valid (version 1).\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nValidate a desired configuration without changing state\n\nUSAGE local-base config validate [OPTIONS]\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n    --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "validate",
+        "--file",
+        "\u003ctmp\u003e/003/absent.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"operational_error\",\"message\":\"ENOENT: no such file or directory, open '\u003ctmp\u003e/003/absent.toml'\"},\"ok\":false}\n",
+      "stderr": "Error: ENOENT: no such file or directory, open '\u003ctmp\u003e/003/absent.toml'\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":false,\"restartRequired\":false,\"pendingRestart\":false,\"changes\":[]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nNo configuration changes.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml",
+        "--detailed-exit-code"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":false,\"restartRequired\":false,\"pendingRestart\":false,\"changes\":[]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nNo configuration changes.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":true,\"pendingRestart\":false,\"changes\":[{\"path\":\"gateway.port\",\"before\":2273,\"after\":2274,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.percent\",\"before\":15,\"after\":12.5,\"activation\":\"restart-required\"},{\"path\":\"runtime.ctxSize\",\"before\":131072,\"after\":65536,\"activation\":\"hot\"},{\"path\":\"runtime.parallel\",\"before\":\"auto\",\"after\":2,\"activation\":\"hot\"}]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\ngateway.port: 2273 -\u003e 2274 [restart-required]\nmemory.systemReserve.percent: 15 -\u003e 12.5 [restart-required]\nruntime.ctxSize: 131072 -\u003e 65536 [hot]\nruntime.parallel: \"auto\" -\u003e 2 [hot]\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml",
+        "--detailed-exit-code"
+      ],
+      "code": 2,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":true,\"pendingRestart\":false,\"changes\":[{\"path\":\"gateway.port\",\"before\":2273,\"after\":2274,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.percent\",\"before\":15,\"after\":12.5,\"activation\":\"restart-required\"},{\"path\":\"runtime.ctxSize\",\"before\":131072,\"after\":65536,\"activation\":\"hot\"},{\"path\":\"runtime.parallel\",\"before\":\"auto\",\"after\":2,\"activation\":\"hot\"}]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\ngateway.port: 2273 -\u003e 2274 [restart-required]\nmemory.systemReserve.percent: 15 -\u003e 12.5 [restart-required]\nruntime.ctxSize: 131072 -\u003e 65536 [hot]\nruntime.parallel: \"auto\" -\u003e 2 [hot]\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/v2.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"},\"ok\":false}\n",
+      "stderr": "Error: [REDACTED REQUEST OR MODEL CONTENT]\nCompare desired configuration with persisted settings\n\nUSAGE local-base config plan [OPTIONS]\n\nOPTIONS\n\n         --root=\u003cpath\u003e    LocalBase data directory\n     --non-interactive    Never open interactive prompts\n                --json    Emit machine-readable JSON\n       --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n  --detailed-exit-code    Exit 2 for changes, 0 for no changes, 1 for errors\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "\u003ctmp\u003e/003/base.toml"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Invalid positional arguments for config plan\"},\"ok\":false}\n",
+      "stderr": "Error: Invalid positional arguments for config plan\nCompare desired configuration with persisted settings\n\nUSAGE local-base config plan [OPTIONS]\n\nOPTIONS\n\n         --root=\u003cpath\u003e    LocalBase data directory\n     --non-interactive    Never open interactive prompts\n                --json    Emit machine-readable JSON\n       --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n  --detailed-exit-code    Exit 2 for changes, 0 for no changes, 1 for errors\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml",
+        "--restart",
+        "sometimes"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"restart: Invalid option: expected one of \\\"auto\\\"|\\\"always\\\"|\\\"never\\\"\"},\"ok\":false}\n",
+      "stderr": "Error: restart: Invalid option: expected one of \"auto\"|\"always\"|\"never\"\nAtomically apply desired configuration\n\nUSAGE local-base config apply [OPTIONS]\n\nOPTIONS\n\n                  --root=\u003cpath\u003e    LocalBase data directory\n              --non-interactive    Never open interactive prompts\n                         --json    Emit machine-readable JSON\n                --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n  --restart=\u003cauto|always|never\u003e    Restart policy (default: auto)\n                         --wait    Wait up to 30 seconds for gateway readiness\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":false,\"restartRequired\":false,\"pendingRestart\":false,\"changes\":[],\"activation\":\"unchanged\",\"readiness\":\"not-checked\"},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nRead a copy of this root's database, as it stood just now.\nNo configuration changes.\nActivation: unchanged. Readiness: not-checked.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/hot.toml",
+        "--wait"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"--wait requires a running gateway without pending restart changes, or --restart always.\"},\"ok\":false}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: --wait requires a running gateway without pending restart changes, or --restart always.\nAtomically apply desired configuration\n\nUSAGE local-base config apply [OPTIONS]\n\nOPTIONS\n\n                  --root=\u003cpath\u003e    LocalBase data directory\n              --non-interactive    Never open interactive prompts\n                         --json    Emit machine-readable JSON\n                --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n  --restart=\u003cauto|always|never\u003e    Restart policy (default: auto)\n                         --wait    Wait up to 30 seconds for gateway readiness\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/hot.toml",
+        "--restart",
+        "never"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":false,\"pendingRestart\":false,\"changes\":[{\"path\":\"models.selectedTtsModels\",\"before\":[],\"after\":[\"qwen3-tts-1.7b-base-q4_k_m\"],\"activation\":\"hot\"},{\"path\":\"runtime.ctxSize\",\"before\":131072,\"after\":32768,\"activation\":\"hot\"}],\"activation\":\"hot\",\"readiness\":\"not-checked\"},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nRead a copy of this root's database, as it stood just now.\nmodels.selectedTtsModels: [] -\u003e [\"qwen3-tts-1.7b-base-q4_k_m\"] [hot]\nruntime.ctxSize: 131072 -\u003e 32768 [hot]\nActivation: hot. Readiness: not-checked.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/hot.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":false,\"restartRequired\":false,\"pendingRestart\":false,\"changes\":[]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nNo configuration changes.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml",
+        "--restart",
+        "never"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":true,\"pendingRestart\":true,\"changes\":[{\"path\":\"gateway.port\",\"before\":2273,\"after\":2274,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.percent\",\"before\":15,\"after\":12.5,\"activation\":\"restart-required\"},{\"path\":\"models.selectedTtsModels\",\"before\":[\"qwen3-tts-1.7b-base-q4_k_m\"],\"after\":[],\"activation\":\"hot\"},{\"path\":\"runtime.ctxSize\",\"before\":32768,\"after\":65536,\"activation\":\"hot\"},{\"path\":\"runtime.parallel\",\"before\":\"auto\",\"after\":2,\"activation\":\"hot\"}],\"activation\":\"restart-required\",\"readiness\":\"not-checked\"},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nRead a copy of this root's database, as it stood just now.\nPending restart: saved static settings await managed startup.\ngateway.port: 2273 -\u003e 2274 [restart-required]\nmemory.systemReserve.percent: 15 -\u003e 12.5 [restart-required]\nmodels.selectedTtsModels: [\"qwen3-tts-1.7b-base-q4_k_m\"] -\u003e [] [hot]\nruntime.ctxSize: 32768 -\u003e 65536 [hot]\nruntime.parallel: \"auto\" -\u003e 2 [hot]\nActivation: restart-required. Readiness: not-checked.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml",
+        "--detailed-exit-code"
+      ],
+      "code": 2,
+      "stdout": "{\"data\":{\"changed\":false,\"restartRequired\":true,\"pendingRestart\":true,\"changes\":[]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nNo configuration changes.\nPending restart: saved static settings await managed startup.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":true,\"pendingRestart\":true,\"changes\":[{\"path\":\"gateway.port\",\"before\":2274,\"after\":2273,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.percent\",\"before\":12.5,\"after\":15,\"activation\":\"restart-required\"},{\"path\":\"runtime.ctxSize\",\"before\":65536,\"after\":131072,\"activation\":\"hot\"},{\"path\":\"runtime.parallel\",\"before\":2,\"after\":\"auto\",\"activation\":\"hot\"}]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nPending restart: saved static settings await managed startup.\ngateway.port: 2274 -\u003e 2273 [restart-required]\nmemory.systemReserve.percent: 12.5 -\u003e 15 [restart-required]\nruntime.ctxSize: 65536 -\u003e 131072 [hot]\nruntime.parallel: 2 -\u003e \"auto\" [hot]\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "show"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"document\":\"# Secrets and process overrides are omitted and preserved on apply.\\nversion = 1\\n\\n[gateway]\\nhost = \\\"127.0.0.1\\\"\\nport = 2274\\n\\n[runtime]\\nhost = \\\"127.0.0.1\\\"\\nport = 18000\\nctxSize = 65536\\nctxMode = \\\"auto\\\"\\nparallel = 2\\nsttHost = \\\"127.0.0.1\\\"\\nsttPort = 18080\\n\\n[models]\\nallowExperimental = false\\nselectedLlmModels = [\\\"qwen3.5-4b-q4_k_m\\\"]\\nselectedSttModels = [\\\"whisper-base-q8_0\\\"]\\nselectedTtsModels = []\\nselectedImageModels = [\\\"dreamshaper-8-lcm\\\"]\\nselectedVideoModels = []\\nactiveLlmModel = \\\"qwen3.5-4b-q4_k_m\\\"\\nactiveSttModel = \\\"whisper-base-q8_0\\\"\\nactiveTtsModel = \\\"\\\"\\nactiveImageModel = \\\"dreamshaper-8-lcm\\\"\\nactiveVideoModel = \\\"\\\"\\n\\n[memory]\\n\\n[memory.systemReserve]\\npercent = 12.5\\nminimumGb = 8\\n\\n[memory.acceleratorReserve]\\npercent = 10\\nminimumGb = 2\\n\",\"pendingRestart\":true},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml",
+        "--restart",
+        "never"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":false,\"restartRequired\":true,\"pendingRestart\":true,\"changes\":[],\"activation\":\"restart-required\",\"readiness\":\"not-checked\"},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nRead a copy of this root's database, as it stood just now.\nNo configuration changes.\nPending restart: saved static settings await managed startup.\nActivation: restart-required. Readiness: not-checked.\n"
+    },
+    {
+      "args": [
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml"
+      ],
+      "code": 0,
+      "stdout": "Pending restart: saved static settings await managed startup.\ngateway.port: 2274 -\u003e 2273 [restart-required]\nmemory.systemReserve.percent: 12.5 -\u003e 15 [restart-required]\nruntime.ctxSize: 65536 -\u003e 131072 [hot]\nruntime.parallel: 2 -\u003e \"auto\" [hot]\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\n"
+    },
+    {
+      "args": [
+        "config",
+        "show"
+      ],
+      "code": 0,
+      "stdout": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2274\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 65536\nctxMode = \"auto\"\nparallel = 2\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen3.5-4b-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"dreamshaper-8-lcm\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen3.5-4b-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"dreamshaper-8-lcm\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 12.5\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nPending restart: saved static settings await managed startup.\n"
+    },
+    {
+      "args": [
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/base.toml",
+        "--restart",
+        "never"
+      ],
+      "code": 0,
+      "stdout": "Pending restart: saved static settings await managed startup.\ngateway.port: 2274 -\u003e 2273 [restart-required]\nmemory.systemReserve.percent: 12.5 -\u003e 15 [restart-required]\nruntime.ctxSize: 65536 -\u003e 131072 [hot]\nruntime.parallel: 2 -\u003e \"auto\" [hot]\nActivation: restart-required. Readiness: not-checked.\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nRead a copy of this root's database, as it stood just now.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "show"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"operational_error\",\"message\":\"Invalid LocalBase configuration in \u003croot\u003e/local-base.db: configuration database is missing. Repair the invalid row or run \\\"local-base reset --root \u003croot\u003e --yes\\\" to recreate the database.\"},\"ok\":false}\n",
+      "stderr": "Error: Invalid LocalBase configuration in \u003croot\u003e/local-base.db: configuration database is missing. Repair the invalid row or run \"local-base reset --root \u003croot\u003e --yes\" to recreate the database.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":true,\"pendingRestart\":false,\"changes\":[{\"path\":\"gateway.host\",\"before\":null,\"after\":\"127.0.0.1\",\"activation\":\"restart-required\"},{\"path\":\"gateway.port\",\"before\":null,\"after\":2274,\"activation\":\"restart-required\"},{\"path\":\"memory.acceleratorReserve.minimumGb\",\"before\":null,\"after\":2,\"activation\":\"restart-required\"},{\"path\":\"memory.acceleratorReserve.percent\",\"before\":null,\"after\":10,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.minimumGb\",\"before\":null,\"after\":8,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.percent\",\"before\":null,\"after\":12.5,\"activation\":\"restart-required\"},{\"path\":\"models.activeImageModel\",\"before\":null,\"after\":\"dreamshaper-8-lcm\",\"activation\":\"hot\"},{\"path\":\"models.activeLlmModel\",\"before\":null,\"after\":\"qwen3.5-4b-q4_k_m\",\"activation\":\"hot\"},{\"path\":\"models.activeSttModel\",\"before\":null,\"after\":\"whisper-base-q8_0\",\"activation\":\"hot\"},{\"path\":\"models.activeTtsModel\",\"before\":null,\"after\":\"\",\"activation\":\"hot\"},{\"path\":\"models.activeVideoModel\",\"before\":null,\"after\":\"\",\"activation\":\"hot\"},{\"path\":\"models.allowExperimental\",\"before\":null,\"after\":false,\"activation\":\"hot\"},{\"path\":\"models.selectedImageModels\",\"before\":null,\"after\":[\"dreamshaper-8-lcm\"],\"activation\":\"hot\"},{\"path\":\"models.selectedLlmModels\",\"before\":null,\"after\":[\"qwen3.5-4b-q4_k_m\"],\"activation\":\"hot\"},{\"path\":\"models.selectedSttModels\",\"before\":null,\"after\":[\"whisper-base-q8_0\"],\"activation\":\"hot\"},{\"path\":\"models.selectedTtsModels\",\"before\":null,\"after\":[],\"activation\":\"hot\"},{\"path\":\"models.selectedVideoModels\",\"before\":null,\"after\":[],\"activation\":\"hot\"},{\"path\":\"runtime.ctxMode\",\"before\":null,\"after\":\"auto\",\"activation\":\"hot\"},{\"path\":\"runtime.ctxSize\",\"before\":null,\"after\":65536,\"activation\":\"hot\"},{\"path\":\"runtime.host\",\"before\":null,\"after\":\"127.0.0.1\",\"activation\":\"hot\"},{\"path\":\"runtime.parallel\",\"before\":null,\"after\":2,\"activation\":\"hot\"},{\"path\":\"runtime.port\",\"before\":null,\"after\":18000,\"activation\":\"hot\"},{\"path\":\"runtime.sttHost\",\"before\":null,\"after\":\"127.0.0.1\",\"activation\":\"hot\"},{\"path\":\"runtime.sttPort\",\"before\":null,\"after\":18080,\"activation\":\"hot\"}]},\"ok\":true}\n",
+      "stderr": "gateway.host: null -\u003e \"127.0.0.1\" [restart-required]\ngateway.port: null -\u003e 2274 [restart-required]\nmemory.acceleratorReserve.minimumGb: null -\u003e 2 [restart-required]\nmemory.acceleratorReserve.percent: null -\u003e 10 [restart-required]\nmemory.systemReserve.minimumGb: null -\u003e 8 [restart-required]\nmemory.systemReserve.percent: null -\u003e 12.5 [restart-required]\nmodels.activeImageModel: null -\u003e \"dreamshaper-8-lcm\" [hot]\nmodels.activeLlmModel: null -\u003e \"qwen3.5-4b-q4_k_m\" [hot]\nmodels.activeSttModel: null -\u003e \"whisper-base-q8_0\" [hot]\nmodels.activeTtsModel: null -\u003e \"\" [hot]\nmodels.activeVideoModel: null -\u003e \"\" [hot]\nmodels.allowExperimental: null -\u003e false [hot]\nmodels.selectedImageModels: null -\u003e [\"dreamshaper-8-lcm\"] [hot]\nmodels.selectedLlmModels: null -\u003e [\"qwen3.5-4b-q4_k_m\"] [hot]\nmodels.selectedSttModels: null -\u003e [\"whisper-base-q8_0\"] [hot]\nmodels.selectedTtsModels: null -\u003e [] [hot]\nmodels.selectedVideoModels: null -\u003e [] [hot]\nruntime.ctxMode: null -\u003e \"auto\" [hot]\nruntime.ctxSize: null -\u003e 65536 [hot]\nruntime.host: null -\u003e \"127.0.0.1\" [hot]\nruntime.parallel: null -\u003e 2 [hot]\nruntime.port: null -\u003e 18000 [hot]\nruntime.sttHost: null -\u003e \"127.0.0.1\" [hot]\nruntime.sttPort: null -\u003e 18080 [hot]\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/experimental.toml",
+        "--restart",
+        "never"
+      ],
+      "code": 1,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"models.selectedTtsModels.0: model is experimental or unsupported on this platform; models.selectedTtsModels.0: Experimental models require models.allowExperimental = true.\"},\"ok\":false}\n",
+      "stderr": "Error: models.selectedTtsModels.0: model is experimental or unsupported on this platform; models.selectedTtsModels.0: Experimental models require models.allowExperimental = true.\nAtomically apply desired configuration\n\nUSAGE local-base config apply [OPTIONS]\n\nOPTIONS\n\n                  --root=\u003cpath\u003e    LocalBase data directory\n              --non-interactive    Never open interactive prompts\n                         --json    Emit machine-readable JSON\n                --file=\u003cpath|-\u003e    Versioned TOML file, or - for stdin\n  --restart=\u003cauto|always|never\u003e    Restart policy (default: auto)\n                         --wait    Wait up to 30 seconds for gateway readiness\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "apply",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml",
+        "--restart",
+        "never"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":true,\"pendingRestart\":true,\"changes\":[{\"path\":\"gateway.host\",\"before\":null,\"after\":\"127.0.0.1\",\"activation\":\"restart-required\"},{\"path\":\"gateway.port\",\"before\":null,\"after\":2274,\"activation\":\"restart-required\"},{\"path\":\"memory.acceleratorReserve.minimumGb\",\"before\":null,\"after\":2,\"activation\":\"restart-required\"},{\"path\":\"memory.acceleratorReserve.percent\",\"before\":null,\"after\":10,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.minimumGb\",\"before\":null,\"after\":8,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.percent\",\"before\":null,\"after\":12.5,\"activation\":\"restart-required\"},{\"path\":\"models.activeImageModel\",\"before\":null,\"after\":\"dreamshaper-8-lcm\",\"activation\":\"hot\"},{\"path\":\"models.activeLlmModel\",\"before\":null,\"after\":\"qwen3.5-4b-q4_k_m\",\"activation\":\"hot\"},{\"path\":\"models.activeSttModel\",\"before\":null,\"after\":\"whisper-base-q8_0\",\"activation\":\"hot\"},{\"path\":\"models.activeTtsModel\",\"before\":null,\"after\":\"\",\"activation\":\"hot\"},{\"path\":\"models.activeVideoModel\",\"before\":null,\"after\":\"\",\"activation\":\"hot\"},{\"path\":\"models.allowExperimental\",\"before\":null,\"after\":false,\"activation\":\"hot\"},{\"path\":\"models.selectedImageModels\",\"before\":null,\"after\":[\"dreamshaper-8-lcm\"],\"activation\":\"hot\"},{\"path\":\"models.selectedLlmModels\",\"before\":null,\"after\":[\"qwen3.5-4b-q4_k_m\"],\"activation\":\"hot\"},{\"path\":\"models.selectedSttModels\",\"before\":null,\"after\":[\"whisper-base-q8_0\"],\"activation\":\"hot\"},{\"path\":\"models.selectedTtsModels\",\"before\":null,\"after\":[],\"activation\":\"hot\"},{\"path\":\"models.selectedVideoModels\",\"before\":null,\"after\":[],\"activation\":\"hot\"},{\"path\":\"runtime.ctxMode\",\"before\":null,\"after\":\"auto\",\"activation\":\"hot\"},{\"path\":\"runtime.ctxSize\",\"before\":null,\"after\":65536,\"activation\":\"hot\"},{\"path\":\"runtime.host\",\"before\":null,\"after\":\"127.0.0.1\",\"activation\":\"hot\"},{\"path\":\"runtime.parallel\",\"before\":null,\"after\":2,\"activation\":\"hot\"},{\"path\":\"runtime.port\",\"before\":null,\"after\":18000,\"activation\":\"hot\"},{\"path\":\"runtime.sttHost\",\"before\":null,\"after\":\"127.0.0.1\",\"activation\":\"hot\"},{\"path\":\"runtime.sttPort\",\"before\":null,\"after\":18080,\"activation\":\"hot\"}],\"activation\":\"restart-required\",\"readiness\":\"not-checked\"},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nPending restart: saved static settings await managed startup.\ngateway.host: null -\u003e \"127.0.0.1\" [restart-required]\ngateway.port: null -\u003e 2274 [restart-required]\nmemory.acceleratorReserve.minimumGb: null -\u003e 2 [restart-required]\nmemory.acceleratorReserve.percent: null -\u003e 10 [restart-required]\nmemory.systemReserve.minimumGb: null -\u003e 8 [restart-required]\nmemory.systemReserve.percent: null -\u003e 12.5 [restart-required]\nmodels.activeImageModel: null -\u003e \"dreamshaper-8-lcm\" [hot]\nmodels.activeLlmModel: null -\u003e \"qwen3.5-4b-q4_k_m\" [hot]\nmodels.activeSttModel: null -\u003e \"whisper-base-q8_0\" [hot]\nmodels.activeTtsModel: null -\u003e \"\" [hot]\nmodels.activeVideoModel: null -\u003e \"\" [hot]\nmodels.allowExperimental: null -\u003e false [hot]\nmodels.selectedImageModels: null -\u003e [\"dreamshaper-8-lcm\"] [hot]\nmodels.selectedLlmModels: null -\u003e [\"qwen3.5-4b-q4_k_m\"] [hot]\nmodels.selectedSttModels: null -\u003e [\"whisper-base-q8_0\"] [hot]\nmodels.selectedTtsModels: null -\u003e [] [hot]\nmodels.selectedVideoModels: null -\u003e [] [hot]\nruntime.ctxMode: null -\u003e \"auto\" [hot]\nruntime.ctxSize: null -\u003e 65536 [hot]\nruntime.host: null -\u003e \"127.0.0.1\" [hot]\nruntime.parallel: null -\u003e 2 [hot]\nruntime.port: null -\u003e 18000 [hot]\nruntime.sttHost: null -\u003e \"127.0.0.1\" [hot]\nruntime.sttPort: null -\u003e 18080 [hot]\nActivation: restart-required. Readiness: not-checked.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "show"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"document\":\"# Secrets and process overrides are omitted and preserved on apply.\\nversion = 1\\n\\n[gateway]\\nhost = \\\"127.0.0.1\\\"\\nport = 2274\\n\\n[runtime]\\nhost = \\\"127.0.0.1\\\"\\nport = 18000\\nctxSize = 65536\\nctxMode = \\\"auto\\\"\\nparallel = 2\\nsttHost = \\\"127.0.0.1\\\"\\nsttPort = 18080\\n\\n[models]\\nallowExperimental = false\\nselectedLlmModels = [\\\"qwen3.5-4b-q4_k_m\\\"]\\nselectedSttModels = [\\\"whisper-base-q8_0\\\"]\\nselectedTtsModels = []\\nselectedImageModels = [\\\"dreamshaper-8-lcm\\\"]\\nselectedVideoModels = []\\nactiveLlmModel = \\\"qwen3.5-4b-q4_k_m\\\"\\nactiveSttModel = \\\"whisper-base-q8_0\\\"\\nactiveTtsModel = \\\"\\\"\\nactiveImageModel = \\\"dreamshaper-8-lcm\\\"\\nactiveVideoModel = \\\"\\\"\\n\\n[memory]\\n\\n[memory.systemReserve]\\npercent = 12.5\\nminimumGb = 8\\n\\n[memory.acceleratorReserve]\\npercent = 10\\nminimumGb = 2\\n\",\"pendingRestart\":true},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "config",
+        "plan",
+        "--file",
+        "\u003ctmp\u003e/003/change.toml"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"changed\":true,\"restartRequired\":true,\"pendingRestart\":true,\"changes\":[{\"path\":\"gateway.port\",\"before\":2273,\"after\":2274,\"activation\":\"restart-required\"},{\"path\":\"memory.systemReserve.percent\",\"before\":15,\"after\":12.5,\"activation\":\"restart-required\"},{\"path\":\"runtime.ctxSize\",\"before\":131072,\"after\":65536,\"activation\":\"hot\"},{\"path\":\"runtime.parallel\",\"before\":\"auto\",\"after\":2,\"activation\":\"hot\"}]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nPending restart: saved static settings await managed startup.\ngateway.port: 2273 -\u003e 2274 [restart-required]\nmemory.systemReserve.percent: 15 -\u003e 12.5 [restart-required]\nruntime.ctxSize: 131072 -\u003e 65536 [hot]\nruntime.parallel: \"auto\" -\u003e 2 [hot]\n"
+    }
+  ]
+}
