@@ -1,6 +1,6 @@
 # Contributing to LocalBase
 
-Thanks for helping. New work goes in [`go/`](go/). [`src/`](src/README.md) is the legacy TypeScript version, so please don't add features there. [DEVELOPMENT.md](DEVELOPMENT.md) explains how the code fits together.
+Thanks for helping. New work goes in [`go/`](go/). [DEVELOPMENT.md](DEVELOPMENT.md) explains how the code fits together.
 
 Bug fixes and docs are welcome straight away. For a larger change, open an issue first so we can agree the approach before you spend time on it.
 
@@ -62,7 +62,7 @@ Tests and experiments must never use your real data directory, service or port.
 - Add or update tests for behaviour changes, and docs for anything user-visible.
 - Add a line to `CHANGELOG.md` under `[Unreleased]` for user-visible changes.
 - Note any change to the database, on-disk files, `/v1` API or CLI flags. See [compatibility](#compatibility).
-- CI must be green. PRs labelled `dual` also run the differential job against the TypeScript gateway.
+- CI must be green: `go-checks` is the required check.
 
 **Commits and titles:** use an imperative summary that says what changed, such as `Refuse models that can never fit`. PR titles can use a type prefix: `fix:`, `feat:`, `docs:`, `ci:`. Branches are `type/short-description`.
 
@@ -78,7 +78,7 @@ Existing data directories must keep working, and a rollback must stay a binary s
 
 The built-in catalog is deliberately small: models tested on real hardware, with one chat model per memory band and one model per job. Please [request a model](.github/ISSUE_TEMPLATE/model_request.yml) before doing the work, because a maintainer has to approve catalog changes. Anyone can already use other models through imports or [their own catalog entries](docs/user-catalog.md).
 
-1. Add a JSON file under `go/internal/catalog/data/<kind>/` and list it in `go/internal/catalog/data/order.txt`. The order breaks recommendation ties. Until the TypeScript tree is removed, add the same file under `src/catalog/models/<kind>/` and import it in `src/catalog/models/index.ts` too: a TS test checks that its render of the feeds matches the committed ones.
+1. Add a JSON file under `go/internal/catalog/data/<kind>/` and list it in `go/internal/catalog/data/order.txt`. The order breaks recommendation ties.
 2. Run `go run ./tools/catalog-feed` from `go/`. It regenerates the published feeds, `catalog/feed.json` and `catalog/feed-v2.json`.
 3. Use facts only: license, revision, sizes, hashes, context window and tasks. No quality claims or benchmark rankings. Memory figures must state whether they're measured or estimated.
 4. Run `make test`.
@@ -107,7 +107,6 @@ LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI -arg
 
 - **Unit tests** live beside the code. Prefer real behaviour over mocks; fakes exist only at real boundaries, such as `internal/runtime/fakebackend`.
 - **Contract tests** in `go/test/contract/` drive a real gateway over HTTP on a scratch root. All writes go through `go/test/harness/fsguard`, and `TestNoUnguardedWrites` enforces that.
-- **Differential tests** compare the Go and TypeScript gateways with `-impl=both`. They need Bun and `LOCALBASE_CONTRACT_MODELS`.
 - **Real inference** is opt-in through `LOCALBASE_CONTRACT_*` variables and is never required for a PR.
 - **A test that sends more than a few thousand requests** goes through `testutil.Flood`, which keeps its connections and stops itself if it can't. Closed connections hold local ports that everything on the machine shares, so a flood that opens one per request can make other programs' connections fail.
 - **Goldens** in `testdata/` were recorded from the TypeScript code and are now Go's own. A change to one is a behaviour change: say why in the PR, and reviewers read the diff.
