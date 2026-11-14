@@ -37,6 +37,7 @@ func multipartBody(fields [][2]string) (string, string) {
 // TestDifferentialTranscriptionRejections sends invalid transcription requests and requires an
 // error envelope for each. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialTranscriptionRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	cases := []formCase{
 		{name: "no file", fields: [][2]string{{"model", "whisper-base-en-q8_0"}}},
 		{name: "file as text", fields: [][2]string{{"file", "not a file"}}},
@@ -50,9 +51,7 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 	}
 	for _, path := range []string{"/v1/audio/transcriptions", "/v1/audio/translations"} {
 		for _, c := range cases {
-			var first *harness.Resp
-			var firstName string
-			for _, tg := range harness.Targets(t) {
+			for _, tg := range tgs {
 				h := harness.Bearer(tg.Key)
 				var body string
 				if c.raw != "" {
@@ -69,17 +68,7 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 					continue
 				}
 				r.ErrorCode(t)
-				if first == nil {
-					first, firstName = r, tg.Name
-					continue
-				}
-				ea, eb := first.JSON(t)["error"].(map[string]any), r.JSON(t)["error"].(map[string]any)
-				for _, k := range []string{"type", "code", "param"} {
-					if ea[k] != eb[k] || first.Status != r.Status {
-						t.Errorf("%s %s:\n %s %d %s\n %s %d %s", path, c.name, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
-						break
-					}
-				}
+				pinError(t, path+" "+c.name, r)
 			}
 		}
 	}

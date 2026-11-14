@@ -1,0 +1,154 @@
+{
+  "error: array": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Invalid input: expected object, received array",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: bad format": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: response_format: response_format supports only 'wav' or 'pcm'",
+    "param": "response_format",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: bad stream": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: stream_format: stream_format supports only 'audio' or 'sse'",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: bad voice": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: voice: voice must be one of default, harbor, willow, af_heart, af_bella or a custom voice id",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: blank model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: model must not be empty",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: chat model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'qwen2.5-coder-1.5b-instruct-q4_k_m' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: empty input": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input: input must not be empty",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: instructions": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: instructions: instructions are not supported",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: long input": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input: input must not exceed 256 characters",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: missing custom voice": {
+    "allow": "",
+    "code": "voice_not_found",
+    "message": "The requested custom voice does not exist. It may have been deleted; list voices at /_localbase/voices.",
+    "param": "voice",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: missing model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: Invalid input: expected string, received undefined",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: missing voice": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: voice: Invalid input: expected string, received undefined",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: not json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid JSON payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: null": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Invalid input: expected object, received null",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: speed": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: speed: speed must be 1",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: string": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Invalid input: expected object, received string",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: unknown key": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Unrecognized key: \"pitch\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: unknown model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: voice not on model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Voice \"harbor\" is not supported by model \"kokoro-82m-v1.0-q8\".",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  }
+}

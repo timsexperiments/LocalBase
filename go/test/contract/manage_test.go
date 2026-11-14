@@ -193,15 +193,20 @@ func runManageScript(t *testing.T, tg *harness.Target) []manageResult {
 // (runManageScript), and clearing a policy that isn't there changes nothing. (Until step 7 every
 // step was compared with TS's.)
 func TestDifferentialManagement(t *testing.T) {
-	for _, tg := range harness.Targets(t) {
+	tgs := pinnedGateways(t)
+	for _, tg := range tgs {
 		if tg.Admin == "" {
 			t.Skip("needs launched gateways")
 		}
-		for i, r := range runManageScript(t, tg) {
+		results := runManageScript(t, tg)
+		steps := make([]any, len(results))
+		for i, r := range results {
 			if s := manageScript[i]; s.body == clearsNothing && (r.status != 200 || !strings.Contains(r.raw, `"cleared":false`)) {
 				t.Errorf("step %d %s: want 200 with cleared false: %d %s", i, s.body, r.status, r.raw)
 			}
+			steps[i] = map[string]any{"status": r.status, "body": r.body}
 		}
+		pinAnswer(t, "script", steps)
 	}
 }
 

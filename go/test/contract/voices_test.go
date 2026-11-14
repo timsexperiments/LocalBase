@@ -35,30 +35,31 @@ func voiceForm(parts ...voicePart) (string, string) {
 	return b.String(), w.FormDataContentType()
 }
 
-// wantError requires every target to answer label with an error: a status of 400 or more and a
-// whole error envelope. (Until step 7 it also required TS and Go to answer alike.)
+// wantError requires every answer to label to be an error: a status of 400 or more and a whole
+// error envelope, which pinError pins. (Until step 7, TS and Go had to answer alike.)
 func wantError(t *testing.T, label string, rs map[string]*harness.Resp) {
 	t.Helper()
-	for _, tg := range harness.Targets(t) {
-		r := rs[tg.Name]
+	for name, r := range rs {
 		if r.Status < 400 {
-			t.Errorf("%s: %s answered %d %s", label, tg.Name, r.Status, r.Body)
+			t.Errorf("%s: %s answered %d %s", label, name, r.Status, r.Body)
 			continue
 		}
 		r.ErrorCode(t)
+		pinError(t, label, r)
 	}
 }
 
 // TestDifferentialVoices runs the custom voice lifecycle: an upload stores a normalized recording,
 // and every rejection answers with an error envelope. (Until step 7 TS and Go had to agree.)
 func TestDifferentialVoices(t *testing.T) {
+	tgs := pinnedGateways(t)
 	const base = "/_localbase/voices"
 	type call struct {
 		method, path, key, ctype, body string
 	}
 	run := func(c func(tg *harness.Target) call) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			x := c(tg)
 			h := map[string]string{}
 			if x.key != "" {
@@ -82,17 +83,12 @@ func TestDifferentialVoices(t *testing.T) {
 
 	// The list, as a reader: limits and the consent statement, no voices.
 	list := run(func(tg *harness.Target) call { return call{"GET", base, tg.Key, "", ""} })
-	var firstList string
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		r := list[tg.Name]
 		if r.Status != 200 || r.Header.Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s list: %d %s", tg.Name, r.Status, r.Body)
 		}
-		if firstList == "" {
-			firstList = string(r.Body)
-		} else if d := harness.DiffJSON("", mustJSON(t, firstList), r.JSON(t), nil); len(d) > 0 {
-			t.Errorf("list differs: %v", d)
-		}
+		pinAnswer(t, "reader list", r.JSON(t))
 	}
 
 	// Rejections before anything is stored.
@@ -136,11 +132,11 @@ func TestDifferentialVoices(t *testing.T) {
 	wantError(t, "malformed id", admin("GET", base+"/voice-XYZ", "", ""))
 	wantError(t, "extra segment", admin("GET", base+"/voice-000000000000/audio/x", "", ""))
 
-	// Create: a recording.
+	// Create: a recording, pinned without its id, times and creator.
 	created := create(voicePart{name: "name", value: "  Narrator\t Voice "}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
 	ids := map[string]string{}
 	var want map[string]any
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		r := created[tg.Name]
 		if r.Status != 201 {
 			t.Fatalf("%s create: %d %s", tg.Name, r.Status, r.Body)
@@ -150,15 +146,10 @@ func TestDifferentialVoices(t *testing.T) {
 		if !strings.HasPrefix(v["createdBy"].(string), "api-key:") {
 			t.Errorf("%s createdBy %v", tg.Name, v["createdBy"])
 		}
-		if want == nil {
-			want = v
-			continue
-		}
-		if d := harness.DiffJSON("", want, v, func(p string) bool {
+		pinAnswer(t, "created voice", harness.PruneJSON(v, "", func(p string) bool {
 			return p == ".id" || p == ".createdAt" || p == ".consent.attestedAt" || p == ".createdBy"
-		}); len(d) > 0 {
-			t.Errorf("create differs: %v", d)
-		}
+		}))
+		want = v
 	}
 	if want["name"] != "Narrator Voice" {
 		t.Errorf("name %v", want["name"])
@@ -193,11 +184,11 @@ func TestDifferentialVoices(t *testing.T) {
 	}
 
 	// Rename.
-	for label, b := range map[string]string{
+	for label, b := range sortedCases(map[string]string{
 		"not json": `{`, "array": `[]`, "null": `null`, "missing name": `{}`, "number name": `{"name":5}`,
 		"extra keys": `{"name":"Ok","b":1,"a":2}`, "extra key": `{"name":"Ok","z":1}`, "reserved": `{"name":"Willow"}`,
 		"blank": `{"name":"   "}`, "too large": `{"name":"` + strings.Repeat("x", 1100) + `"}`,
-	} {
+	}) {
 		wantError(t, "rename "+label, on("PATCH", at(""), asAdmin, "application/json", b))
 	}
 	wantError(t, "rename as reader", on("PATCH", at(""), asReader, "application/json", `{"name":"Other"}`))
@@ -220,9 +211,4 @@ func TestDifferentialVoices(t *testing.T) {
 		return call{"POST", "/v1/audio/speech", tg.Key, "application/json",
 			`{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"hi","voice":"` + ids[tg.Name] + `"}`}
 	}))
-}
-
-func mustJSON(t *testing.T, s string) map[string]any {
-	t.Helper()
-	return (&harness.Resp{Body: []byte(s)}).JSON(t)
 }

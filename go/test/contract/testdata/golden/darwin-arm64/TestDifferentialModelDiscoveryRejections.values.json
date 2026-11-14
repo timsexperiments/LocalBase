@@ -1,0 +1,154 @@
+{
+  "error: discovery GET": {
+    "allow": "POST",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: discovery add bad repo": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Expected a Hugging Face repository as \u003corg\u003e/\u003crepo\u003e.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery add empty selector": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery add install string": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery add owned id": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Expected a Hugging Face repository as \u003corg\u003e/\u003crepo\u003e.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery array": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery as reader": {
+    "allow": "",
+    "code": "insufficient_permissions",
+    "message": "Forbidden: The credential lacks the required permission.",
+    "param": null,
+    "status": 403,
+    "type": "invalid_request_error"
+  },
+  "error: discovery no action": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery not json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery preview bad repo": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Expected a Hugging Face repository as \u003corg\u003e/\u003crepo\u003e.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery preview missing repo": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery preview short repo": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery recipe unknown model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "\"no-such-model\" is not in this catalog. Update LocalBase or the catalog feed.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: discovery recipe without feed": {
+    "allow": "",
+    "code": "no_recipe",
+    "message": "The catalog feed has no install recipe for \"qwen2.5-coder-1.5b-instruct-q4_k_m\".",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery search bad kind": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery search extra key": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery search long query": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: discovery too large": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Model discovery body exceeds the 2048 byte limit.",
+    "param": null,
+    "status": 413,
+    "type": "invalid_request_error"
+  },
+  "error: discovery unknown action": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model discovery payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  }
+}

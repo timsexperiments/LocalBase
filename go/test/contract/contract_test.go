@@ -388,27 +388,16 @@ func schemaCase(schema string) string {
 // TestDifferentialRejections sends requests that fail validation to every target and requires an
 // error envelope for each. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	for _, c := range rejectionCases {
-		var first *harness.Resp
-		var firstName string
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			r := harness.Do(t, "POST", tg.BaseURL+c.path, harness.Bearer(tg.Key), c.body)
 			if r.Status != 400 && r.Status != 404 {
 				t.Errorf("%s %s %s: %d %s", tg.Name, c.path, c.body, r.Status, r.Body)
 				continue
 			}
 			r.ErrorCode(t)
-			if first == nil {
-				first, firstName = r, tg.Name
-				continue
-			}
-			ea, eb := first.JSON(t)["error"].(map[string]any), r.JSON(t)["error"].(map[string]any)
-			for _, k := range []string{"type", "code", "param"} {
-				if ea[k] != eb[k] || first.Status != r.Status {
-					t.Errorf("%s %s:\n %s %d %s\n %s %d %s", c.path, c.body, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
-					break
-				}
-			}
+			pinError(t, c.path+" "+c.body, r)
 		}
 	}
 }

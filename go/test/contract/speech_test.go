@@ -17,6 +17,7 @@ import (
 // TestDifferentialSpeechRejections sends invalid speech requests and requires an error envelope for
 // each; none of them reaches a backend. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialSpeechRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	long := strings.Repeat("a", 257)
 	cases := []struct{ name, body string }{
 		{"not json", `{`},
@@ -40,9 +41,7 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 		{"voice not on model", `{"model":"kokoro-82m-v1.0-q8","input":"hi","voice":"harbor"}`},
 	}
 	for _, c := range cases {
-		var first *harness.Resp
-		var firstName string
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = "application/json"
 			r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h, c.body)
@@ -51,17 +50,7 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 				continue
 			}
 			r.ErrorCode(t)
-			if first == nil {
-				first, firstName = r, tg.Name
-				continue
-			}
-			ea, eb := first.JSON(t)["error"].(map[string]any), r.JSON(t)["error"].(map[string]any)
-			for _, k := range []string{"type", "code", "param", "message"} {
-				if ea[k] != eb[k] || first.Status != r.Status {
-					t.Errorf("%s:\n %s %d %s\n %s %d %s", c.name, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
-					break
-				}
-			}
+			pinError(t, c.name, r)
 		}
 	}
 }
