@@ -11,7 +11,6 @@
 #   tools/shadow.sh serve go|ts             # start a gateway on the copy (background)
 #   tools/shadow.sh stop                    # stop it
 #   tools/shadow.sh schema <label>          # snapshot the journal and schema
-#   tools/shadow.sh sessions                # TS-vs-Go verdicts on the copy's sessions
 #   tools/shadow.sh cleanup                 # stop and delete the copy
 #
 # LBGO_SHADOW (default /private/tmp/lbgo-shadow) is the work directory.
@@ -140,32 +139,11 @@ schema)
   sqlite3 "file:$root/local-base.db?mode=ro" ".schema" > "$work/schema-$label.sql"
   echo "journal rows: $(wc -l < "$work/journal-$label.txt" | tr -d ' '), schema lines: $(wc -l < "$work/schema-$label.sql" | tr -d ' ')"
   ;;
-sessions)
-  [ -d "$root" ] || die "no copy"
-  [ -e "$work/gateway.pid" ] && die "stop the gateway first"
-  # Both sides read a second copy of the database, so neither can change
-  # the shadow copy; the same instant is used for both verdicts.
-  check="$work/session-check"
-  rm -rf "$check"; mkdir -m 700 "$check"
-  sqlite3 "file:$root/local-base.db?mode=ro" ".backup '$check/local-base.db'"
-  cp "$root/ui-access.json" "$check/" 2>/dev/null
-  now=$(($(date +%s) * 1000))
-  # TS from the live build's source when given (LBGO_TS_SRC), else this tree.
-  ts=..
-  if [ -d "${LBGO_TS_SRC:-}" ]; then
-    mkdir -p "$LBGO_TS_SRC/go/tools/golden" && cp tools/golden/session-check.ts "$LBGO_TS_SRC/go/tools/golden/"
-    ts=$LBGO_TS_SRC
-  fi
-  (cd "$ts" && bun run go/tools/golden/session-check.ts "$check" "$now") > "$work/sessions-ts.json" || die "TS session check"
-  LOCALBASE_SESSION_ROOT="$check" LOCALBASE_SESSION_NOW="$now" LOCALBASE_SESSION_TS="$work/sessions-ts.json" \
-    go test ./internal/auth -run TestSessionRowsMatchTS -count=1 -v 2>&1 | grep -E "session |--- |^ok|FAIL"
-  rm -rf "$check"
-  ;;
 cleanup)
   "$0" stop >/dev/null
   rm -rf "$work"
   [ -e "$work" ] && die "could not remove $work"
   echo "removed $work"
   ;;
-*) die "usage: copy|serve|stop|schema|sessions|cleanup" ;;
+*) die "usage: copy|serve|stop|schema|cleanup" ;;
 esac

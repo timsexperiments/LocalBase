@@ -113,7 +113,7 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive.
-const minRead = 123
+const minRead = 112
 
 // scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as go/tools
 // is), and checks the floor only for the trees.
@@ -134,7 +134,7 @@ var knownToDelete = map[string]int{
 	"scripts/otelcol-check.sh":             1,
 	"scripts/placement-rollback-check.sh":  1,
 	"tools/rehearsal.sh":                   1,
-	"tools/shadow.sh":                      6,
+	"tools/shadow.sh":                      4,
 	"scripts/sync-catalog.sh":              1,
 	"test/platform/systemd-check.sh":       1,
 	"scripts/tailwind.sh":                  1,

@@ -25,11 +25,9 @@ in a row: LLM, STT, TTS, image, video. A start refuses a port another process ho
 `-impl=ts` and `-impl=both` need Bun and `LOCALBASE_CONTRACT_MODELS` pointing
 at a directory that holds `qwen2.5-coder-1.5b-instruct-q4_k_m.gguf` (read only).
 Add `LOCALBASE_CONTRACT_RUNTIMES` (a `bin/runtimes` directory, copied into each
-scratch root) to run real inference. Golden plans come from the TS code:
-
-```sh
-bun run go/tools/golden/llm-plans.ts <models/llm dir> > go/internal/runtime/testdata/llm-plans.json
-```
+scratch root) to run real inference. The golden plans in
+`internal/runtime/testdata/llm-plans.json` were recorded from the TS code and are now
+Go's own: a change to them is a behaviour change, reviewed by hand.
 
 ## Build identity
 
