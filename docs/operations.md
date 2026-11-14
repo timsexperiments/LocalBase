@@ -88,17 +88,4 @@ A detached run still going when a gateway stops comes back as `interrupted`, rea
 
 ## Integrated qualification
 
-Pull requests already run the full Bun test suite and a compiled Linux x64 runtime smoke test. On a Linux x64 host or container, reuse the same smoke path for final integrated qualification:
-
-```bash
-bun run scripts/release-artifacts.ts build \
-  --target linux-x64 \
-  --output extracted/linux-x64
-chmod +x extracted/linux-x64/local-base-linux-x64
-mkdir -p "$RUNNER_TEMP"
-LOCALBASE_SMOKE_TARGET=linux-x64 \
-LOCALBASE_SMOKE_CLI="$PWD/extracted/linux-x64/local-base-linux-x64" \
-bun test --timeout 120000 scripts/runtime-smoke.test.ts
-```
-
-Set `RUNNER_TEMP` to a dedicated writable directory before running the commands. Release qualification uses the same `scripts/runtime-smoke.test.ts` entry point for each compiled target, with the target-specific `LOCALBASE_SMOKE_TARGET` and `LOCALBASE_SMOKE_CLI` values.
+The release workflow (`release-go.yml`) builds every target, then installs, verifies and serves each one on a scratch root with `scripts/release/test-installer.sh`. `scripts/release/rehearse.sh` runs the same steps on this machine against local artifacts, and publishes nothing.

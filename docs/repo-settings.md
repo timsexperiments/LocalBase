@@ -14,9 +14,9 @@ The `default` ruleset covers the default branch.
 
 - [x] Require a pull request before merging, with squash the only merge method. A rebase merge stamps your profile name as committer, and a merge commit keeps history you may not want on `main`.
 - [x] Block force pushes and deletions. Any history rewrite means lifting this deliberately.
-- [x] Require the `validate` check.
+- [x] Require `go-checks`, from `go.yml`. It passes only when every Go job that should run has passed, and passes when a change doesn't touch the Go tree.
+- [ ] Remove the `validate` check from the ruleset when the pull request that deletes `ci.yml` merges. That check no longer exists afterwards, and a required check that never runs blocks every merge.
 - [ ] After #403 merges, also require `hygiene` and `secrets`. A required check has to exist on `main` first. `release-go.yml` runs only when its paths change, and a required check that doesn't run blocks the merge, so don't require its jobs.
-- [ ] Require `go-checks`, from `go.yml`, once it has run on `main` at least once. It passes only when every Go job that should run has passed, and passes when a change doesn't touch the Go tree.
 - [ ] After #403 merges, turn off merge commits and rebase merging in Settings → General, so the options match the ruleset.
 
 ## Release tags
