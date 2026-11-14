@@ -147,28 +147,6 @@ func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cl
 
 var volatileValue = regexp.MustCompile(`key_[0-9a-f-]{36}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|lb_[A-Za-z0-9_-]{32}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z`)
 
-// normalize parses an envelope, replaces root paths and volatile values.
-func normalize(t *testing.T, s, root string) any {
-	t.Helper()
-	s = strings.ReplaceAll(s, root, "<root>")
-	s = volatileValue.ReplaceAllStringFunc(s, func(m string) string {
-		switch {
-		case strings.HasPrefix(m, "key_"):
-			return "<key-id>"
-		case strings.HasPrefix(m, "lb_"):
-			return "<secret>"
-		case len(m) == 36 && m[8] == '-':
-			return "<uuid>"
-		}
-		return "<time>"
-	})
-	var v any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &v); err != nil {
-		t.Fatalf("not one JSON envelope: %v\n%s", err, s)
-	}
-	return v
-}
-
 // cliRoot is a pinned test's root: <scratch>/go, the Go half of the twin roots R3a recorded on.
 func cliRoot(t *testing.T) string {
 	base := fsguard.ScratchDir(t)
