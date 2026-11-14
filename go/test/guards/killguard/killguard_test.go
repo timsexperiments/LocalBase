@@ -77,7 +77,8 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive. Lowered from 207 by step 7's R3b, which deleted six of the files it read: tools/integration's
 // audit.go, behind.go, main.go, main_test.go and rerere-env.sh, and test/system/dual_differences_test.go.
-const minRead = 202
+// Raised to 203 by M0b's scripts/unit-packages.sh.
+const minRead = 203
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
 // other file may join. Lower a number, or remove a line, as they are fixed.

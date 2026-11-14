@@ -95,9 +95,9 @@ func TestPlatformAbsencesAreNamed(t *testing.T) {
 	// The harness left this package in step 7 (R2), and the system tests in R3. Their files are
 	// read too (the harness's, tests or not), so a platform skip there is still found: a move
 	// must not narrow a source-reading check.
-	system, more := skipsIn(t, filepath.Join(testutil.RepoRoot(t), "go", "test", "system", "*_test.go"))
+	system, more := skipsIn(t, filepath.Join(testutil.ModuleRoot(t), "test", "system", "*_test.go"))
 	maps.Copy(found, more)
-	harness := filepath.Join(testutil.RepoRoot(t), "go", "test", "harness")
+	harness := filepath.Join(testutil.ModuleRoot(t), "test", "harness")
 	harnessFiles := 0
 	for _, dir := range []string{harness, filepath.Join(harness, "fsguard")} {
 		n, more := skipsIn(t, filepath.Join(dir, "*.go"))
