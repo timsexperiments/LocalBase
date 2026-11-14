@@ -1,7 +1,5 @@
 package runtime
 
-//go:generate cp ../../../src/manager/managed-runtime-manifest.json managed-runtime-manifest.json
-
 import (
 	_ "embed"
 	"encoding/json"

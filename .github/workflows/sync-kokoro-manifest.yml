@@ -87,7 +87,9 @@ jobs:
           if git diff --quiet -- src/manager/managed-runtime-manifest.json; then
             printf 'changed=false\n' >> "$GITHUB_OUTPUT"
           else
-            git add src/manager/managed-runtime-manifest.json
+            # The Go build embeds its own copy; the two stay identical until the TS helpers stop reading src/ (R4b).
+            cp src/manager/managed-runtime-manifest.json go/internal/runtime/managed-runtime-manifest.json
+            git add src/manager/managed-runtime-manifest.json go/internal/runtime/managed-runtime-manifest.json
             git commit -m "chore: pin $RUNTIME_TAG kokoro-tts runtime archives"
             printf 'changed=true\n' >> "$GITHUB_OUTPUT"
           fi
