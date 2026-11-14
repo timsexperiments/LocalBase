@@ -156,11 +156,6 @@ var (
 		// commit and the Go toolchain, and Status follows the machine's RAM.
 		{name: "doctor lines", applies: isDoctor, re: regexp.MustCompile(`(?m)^(LocalBase|OS|CPU|RAM|GPU|GPU VRAM|Status): .+$`),
 			repl: func(m string) string { label, _, _ := strings.Cut(m, ": "); return label + ": <host>" }},
-		// diagnostics' memory lines end in a fit verdict, which follows the machine's GPU memory:
-		// internal/diagnostics reads memory.DetectSpecs, not the lab host. The size and its
-		// source stay pinned.
-		{name: "diagnostics fit", applies: isDiagnostics, re: regexp.MustCompile(`(?m)^Memory for [^:\n]+: [0-9.]+ GB \([^)\n]*\), \S+$`),
-			repl: func(m string) string { return m[:strings.LastIndex(m, ", ")] + ", <host>" }},
 	}
 	loopbackPort = regexp.MustCompile(`(127\.0\.0\.1|localhost):\d+`)
 	// A key's prefix and a voice's id are random; a diagnostics archive's size follows the
@@ -172,8 +167,6 @@ var (
 )
 
 func isDoctor(args []string) bool { return slices.Contains(args, "doctor") }
-
-func isDiagnostics(args []string) bool { return slices.Contains(args, "diagnostics") }
 
 // scrub normalizes one string of a Go CLI run for the transcript: the run's root, the system temp
 // directory's entries (each test's scratch), loopback ports, ids, secrets and times, and the
