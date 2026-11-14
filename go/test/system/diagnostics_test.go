@@ -138,9 +138,11 @@ func TestCLIDiagnostics(t *testing.T) {
 // named. A pinned manifest carries the masks it needed, so a masked field that disappears fails
 // the comparison instead of passing unnoticed.
 var manifestMasks = []valueMask{
-	// The hardware section: memory.DetectSpecs' CPU, GPU and memory (not the lab host).
+	// The hardware section: memory.DetectSpecs' OS, CPU, GPU and memory (not the lab host). The OS is
+	// "macOS" on a Mac but the distribution's name on Linux (Debian in the recording container,
+	// Ubuntu on CI's runner).
 	{name: "manifest hardware", match: func(p string) bool {
-		return slices.Contains([]string{".hardware.data.cpu", ".hardware.data.gpu", ".hardware.data.memoryGb", ".hardware.data.vramGb"}, p)
+		return slices.Contains([]string{".hardware.data.os", ".hardware.data.cpu", ".hardware.data.gpu", ".hardware.data.memoryGb", ".hardware.data.vramGb"}, p)
 	}},
 	// Each model's fit: internal/diagnostics takes it from DetectSpecs' GPU memory, as the
 	// "diagnostics fit" mask says of the human lines.
@@ -148,10 +150,10 @@ var manifestMasks = []valueMask{
 		return strings.HasPrefix(p, ".models.data.models[") && (strings.HasSuffix(p, ".memory.systemMemoryGb") || strings.HasSuffix(p, ".memory.verdict"))
 	}},
 	// Whether the user's service manager (launchd, systemd --user) answers is the session's, and
-	// so is the service state it reports: "unknown" where no manager answers (a container),
-	// "not_installed" where one does.
+	// so is what it reports: the state ("unknown" where no manager answers, as in a container,
+	// "not_installed" where one does) and the restart count (none without a manager, 0 with one).
 	{name: "service manager session", match: func(p string) bool {
-		return p == ".service.data.managerAvailable" || p == ".service.data.managerState" || p == ".service.data.state"
+		return slices.Contains([]string{".service.data.managerAvailable", ".service.data.managerState", ".service.data.state", ".service.data.restartCount"}, p)
 	}},
 }
 

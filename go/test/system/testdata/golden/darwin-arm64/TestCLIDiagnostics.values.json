@@ -36,7 +36,7 @@
           "cpu": "\u003chost\u003e",
           "gpu": "\u003chost\u003e",
           "memoryGb": "\u003chost\u003e",
-          "os": "macOS",
+          "os": "\u003chost\u003e",
           "vramGb": "\u003chost\u003e"
         }
       },
@@ -235,7 +235,7 @@
           "managerAvailable": "\u003chost\u003e",
           "managerState": "\u003chost\u003e",
           "pid": null,
-          "restartCount": null,
+          "restartCount": "\u003chost\u003e",
           "state": "\u003chost\u003e",
           "uptimeSeconds": null
         }
@@ -266,7 +266,7 @@
           "cpu": "\u003chost\u003e",
           "gpu": "\u003chost\u003e",
           "memoryGb": "\u003chost\u003e",
-          "os": "macOS",
+          "os": "\u003chost\u003e",
           "vramGb": "\u003chost\u003e"
         }
       },
@@ -299,7 +299,7 @@
           "managerAvailable": "\u003chost\u003e",
           "managerState": "\u003chost\u003e",
           "pid": null,
-          "restartCount": null,
+          "restartCount": "\u003chost\u003e",
           "state": "\u003chost\u003e",
           "uptimeSeconds": null
         }
