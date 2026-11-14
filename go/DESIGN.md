@@ -5853,7 +5853,15 @@ mv ~/.local/bin/local-base.previous ~/.local/bin/local-base && local-base restar
 
 ### 33.5 Tests, first
 
-All of these use a fake release server through `LOCALBASE_RELEASE_URL`, which the installer already honours, plain HTTP only on loopback, and scratch install directories. A test key is compiled in with `-ldflags` for test builds only, and a test holds that the release build sets no such thing. **None touch the real service, `~/.local/bin` or GitHub.**
+All of these use a fake release server through `LOCALBASE_RELEASE_URL`, which the installer already honours, plain HTTP only on loopback, and scratch install directories. **None touch the real service, `~/.local/bin` or GitHub.**
+
+**The test key is behind a build tag.** `upgrade.testKey` exists only in a build tagged `localbase_testkey` (`upgrade/testkey_on.go`). A test build sets it with `-tags localbase_testkey -ldflags "-X …/upgrade.testKey=id:base64"`, always both. Every other build has `testkey_off.go`, whose `extraKeys()` returns nil, so `TrustedKeys()` is exactly `ReleaseKeys`. The linker silently ignores `-X` for a symbol that doesn't exist, so a stray `-X` can't make a release trust a key. A tagged build says so in `local-base version` ("Built with the test signing key: not for release."), and a release never does. What holds this:
+- `TestReleaseBuildSetsNoTestKey`: the release recipe (`go/tools/build.sh`, `scripts/release/build.sh`, `release-go.yml`) names no `testKey`, no `localbase_testkey`, no `-tags`, sets no tags through `GOFLAGS`, and never builds `tools/upgrade-rehearsal`. A file that moved fails it.
+- `TestTestKeyFilesAreTagged`: any shipped source file naming the `testKey` identifier starts with `//go:build localbase_testkey`.
+- `TestADefaultBuildTrustsOnlyTheReleaseKeys`; and `TestOnlyATestKeyBuildSaysSoInVersion`, both ways.
+- In `test/system`: the kit builds its keyed binaries with the tag. `TestUpgradeRefusesBadReleasesRealBinary` first shows a release the key signed accepted, so no refusal passes because the key didn't take. `TestTheTestKeyNeedsItsTag` is the attack: a default build with the key's `-X` refuses that release with the gate's error. `TestTheReleaseShapeCarriesNoTestKey` builds with the release's own flags: the key's bytes are absent untagged and present tagged, `go version -m` names the tag only on the tagged build, and `go tool nm` finds `upgrade.testKey` only in an unstripped tagged build.
+- `tools/upgrade-rehearsal` builds its kit with the tag beside the `-X`, and its test checks both are in one command. The release workflow never builds or publishes it.
+- CI builds and vets both sides of the tag, and lints the tagged file, each with `-tags` on the command alone, never job-wide.
 
 - `TestUpgradeCheckSendsNothing`: the exact headers and URL, no token even with tokens set, and nothing written.
 - `TestUpgradeCheckCompares`: older, same, newer, a runtime tag, garbage, a network failure, a development build, a 403 with a reset time.

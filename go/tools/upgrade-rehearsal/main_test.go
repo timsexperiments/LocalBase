@@ -584,7 +584,7 @@ func TestKitBuildsLikeTheRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := rb.goArgs(testKeyFlag(pub), "out", "./cmd/localbase")
+	args := rb.goArgs(testKeyTag, testKeyFlag(pub), "out", "./cmd/localbase")
 	i := slices.Index(args, "-ldflags")
 	if i < 1 || i+1 >= len(args) {
 		t.Fatalf("no -ldflags in %q", args)
@@ -595,7 +595,12 @@ func TestKitBuildsLikeTheRelease(t *testing.T) {
 	if n := strings.Count(args[i+1], "/upgrade.testKey="); n != 1 {
 		t.Errorf("%d test-key flags in the kit's build, want exactly 1", n)
 	}
-	if got, want := args[1:i], strings.Fields(script("--goflags")); !slices.Equal(got, want) {
+	// The -X of the key is in the same command as its tag: without the tag the linker ignores it.
+	t2 := slices.Index(args, "-tags")
+	if t2 < 1 || t2+1 >= i || args[t2+1] != testKeyTag {
+		t.Errorf("the kit's build sets the test key without -tags %s: %q", testKeyTag, args)
+	}
+	if got, want := slices.Delete(slices.Clone(args[1:i]), t2-1, t2+1), strings.Fields(script("--goflags")); !slices.Equal(got, want) {
 		t.Errorf("the kit's go build flags %q, want the release's %q", got, want)
 	}
 	if got, want := rb.env, strings.Fields(script("--env")); !slices.Equal(got, want) {

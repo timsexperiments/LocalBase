@@ -71,3 +71,30 @@ func TestBuildIsReproducible(t *testing.T) {
 		t.Errorf("two builds differ: %d and %d bytes", len(x), len(y))
 	}
 }
+
+// A build tagged localbase_testkey says so in `local-base version`; a build without the tag, as
+// every release is, never does (DESIGN §33.5).
+func TestOnlyATestKeyBuildSaysSoInVersion(t *testing.T) {
+	const line = "Built with the test signing key: not for release."
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		tags []string
+		want bool
+	}{{"release", nil, false}, {"tagged", []string{"-tags", "localbase_testkey"}, true}} {
+		bin := filepath.Join(dir, tc.name)
+		args := append([]string{"build", "-trimpath", "-buildvcs=false"}, tc.tags...)
+		cmd := exec.Command("go", append(args, "-o", bin, ".")...)
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%s build: %v\n%s", tc.name, err, b)
+		}
+		out, err := exec.Command(bin, "version").CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s version: %v\n%s", tc.name, err, out)
+		}
+		if got := strings.Contains(string(out), line); got != tc.want {
+			t.Errorf("%s build: says it has the test key %v, want %v:\n%s", tc.name, got, tc.want, out)
+		}
+	}
+}
