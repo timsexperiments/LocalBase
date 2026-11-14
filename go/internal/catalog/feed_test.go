@@ -3,10 +3,12 @@ package catalog
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 type feedGolden struct {
@@ -117,7 +119,7 @@ func TestFeedURLProblemGolden(t *testing.T) {
 // to the built-in catalog and compares every model with TS.
 func TestAnnotationApplicationGolden(t *testing.T) {
 	g := loadFeedGolden(t)
-	b, err := os.ReadFile("../../../catalog/feed-v2.json")
+	b, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "catalog", "feed-v2.json"))
 	if err != nil {
 		t.Fatalf("the published feed: %v", err)
 	}

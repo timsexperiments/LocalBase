@@ -35,3 +35,27 @@ func RepoRoot(t Fataler) string {
 		dir = parent
 	}
 }
+
+// ModuleRoot is the Go module's directory: the nearest one above the working directory that holds
+// go.mod. A test that reads a file inside the module by a path from its top starts from here, so
+// the path holds wherever the module sits in the repository (go/ today, the top after the move).
+// It fails the test when there is no such directory.
+func ModuleRoot(t Fataler) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("working directory: %v", err)
+		return ""
+	}
+	for {
+		if info, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && info.Mode().IsRegular() {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no directory holding go.mod above the working directory")
+			return ""
+		}
+		dir = parent
+	}
+}
