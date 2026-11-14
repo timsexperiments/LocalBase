@@ -157,9 +157,16 @@ func launchTargets() ([]*Target, error) {
 // migrated database with a config row and two keys, the remote feed off,
 // and optionally the real chat model and llama-server package.
 //
-// Fixture takes NoReserve; Env is for Launch and does nothing here.
+// Fixture takes NoReserve and GoldenFixture; Env and LabHost are for Launch and do nothing here.
 func Fixture(dir string, llmPort int, opts ...Option) (key, chatOnly, admin string, real bool, err error) {
 	o := optionsOf(opts)
+	// The variables that add real models or runtimes, which the golden fixture doesn't read.
+	getenv := func(k string) string {
+		if o.golden {
+			return ""
+		}
+		return os.Getenv(k)
+	}
 	r, err := root.Init(dir)
 	if err != nil {
 		return "", "", "", false, err
@@ -172,19 +179,21 @@ func Fixture(dir string, llmPort int, opts ...Option) (key, chatOnly, admin stri
 	sel, _ := json.Marshal([]string{ChatModel, DecisionModel, EmbeddingModel})
 	// A real whisper model (an APFS clone), when LOCALBASE_CONTRACT_STT_MODELS has it.
 	sttSel := `["whisper-base-en-q8_0"]`
-	if d := os.Getenv("LOCALBASE_CONTRACT_STT_MODELS"); d != "" && fileExists(filepath.Join(d, "ggml-tiny.en-q8_0.bin")) {
+	if d := getenv("LOCALBASE_CONTRACT_STT_MODELS"); d != "" && fileExists(filepath.Join(d, "ggml-tiny.en-q8_0.bin")) {
 		fsguard.MkdirAll(r.ModelsDir("stt"), 0o700)
 		if err := fsguard.CloneModel(filepath.Join(d, "ggml-tiny.en-q8_0.bin"), filepath.Join(r.ModelsDir("stt"), "ggml-tiny.en-q8_0.bin")); err != nil {
 			return "", "", "", false, err
 		}
 		sttSel = `["whisper-base-en-q8_0","whisper-tiny-en-q8_0"]`
 	}
-	if err := linkCrispASR(r); err != nil {
-		return "", "", "", false, err
+	if !o.golden {
+		if err := linkCrispASR(r); err != nil {
+			return "", "", "", false, err
+		}
 	}
 	// The real FastWan video files (APFS clones), when
 	// LOCALBASE_CONTRACT_VIDEO_MODELS has them (an operator-approved memory window).
-	if d := os.Getenv("LOCALBASE_CONTRACT_VIDEO_MODELS"); d != "" {
+	if d := getenv("LOCALBASE_CONTRACT_VIDEO_MODELS"); d != "" {
 		fsguard.MkdirAll(r.ModelsDir("video"), 0o700)
 		for _, f := range []string{"FastWan2.2-TI2V-5B-q6_k.gguf", "umt5-xxl-encoder-Q8_0.gguf", "taew2_2.safetensors"} {
 			if fileExists(filepath.Join(d, f)) {
@@ -196,7 +205,7 @@ func Fixture(dir string, llmPort int, opts ...Option) (key, chatOnly, admin stri
 	}
 	// A real image model (an APFS clone), when LOCALBASE_CONTRACT_IMAGE_MODELS has it.
 	imageSel := `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo","juggernaut-xl-v9"]`
-	if d := os.Getenv("LOCALBASE_CONTRACT_IMAGE_MODELS"); d != "" && fileExists(filepath.Join(d, imageFile)) {
+	if d := getenv("LOCALBASE_CONTRACT_IMAGE_MODELS"); d != "" && fileExists(filepath.Join(d, imageFile)) {
 		fsguard.MkdirAll(r.ModelsDir("image"), 0o700)
 		if err := fsguard.CloneModel(filepath.Join(d, imageFile), filepath.Join(r.ModelsDir("image"), imageFile)); err != nil {
 			return "", "", "", false, err
@@ -248,7 +257,7 @@ func Fixture(dir string, llmPort int, opts ...Option) (key, chatOnly, admin stri
 		dir := r.ModelsDir(spec.Kind)
 		fsguard.MkdirAll(dir, 0o700)
 		// The real Qwen3-TTS files (APFS clones), when LOCALBASE_CONTRACT_TTS_MODELS has them.
-		if d := os.Getenv("LOCALBASE_CONTRACT_TTS_MODELS"); d != "" && id == "qwen3-tts-1.7b-base-q4_k_m" && fileExists(filepath.Join(d, spec.Artifacts[0].Filename)) {
+		if d := getenv("LOCALBASE_CONTRACT_TTS_MODELS"); d != "" && id == "qwen3-tts-1.7b-base-q4_k_m" && fileExists(filepath.Join(d, spec.Artifacts[0].Filename)) {
 			for _, a := range spec.Artifacts {
 				if err := fsguard.CloneModel(filepath.Join(d, a.Filename), filepath.Join(dir, a.Filename)); err != nil {
 					return "", "", "", false, err
@@ -264,8 +273,15 @@ func Fixture(dir string, llmPort int, opts ...Option) (key, chatOnly, admin stri
 		}
 	}
 	fsguard.MkdirAll(r.ModelsDir("llm"), 0o700)
+	if o.golden {
+		for _, a := range cat.ByID(ChatModel).Artifacts {
+			if err := fsguard.Sparse(filepath.Join(r.ModelsDir("llm"), a.Filename), a.ExpectedSizeBytes); err != nil {
+				return "", "", "", false, err
+			}
+		}
+	}
 	modelLinked := false
-	if models := os.Getenv("LOCALBASE_CONTRACT_MODELS"); models != "" {
+	if models := getenv("LOCALBASE_CONTRACT_MODELS"); models != "" {
 		src := filepath.Join(models, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
 		if _, err := os.Stat(src); err == nil {
 			if err := fsguard.CloneModel(src, filepath.Join(r.ModelsDir("llm"), filepath.Base(src))); err != nil {
@@ -280,7 +296,7 @@ func Fixture(dir string, llmPort int, opts ...Option) (key, chatOnly, admin stri
 			}
 		}
 	}
-	if runtimes := os.Getenv("LOCALBASE_CONTRACT_RUNTIMES"); runtimes != "" && modelLinked {
+	if runtimes := getenv("LOCALBASE_CONTRACT_RUNTIMES"); runtimes != "" && modelLinked {
 		{
 			// Copy, never link, the runtime package: backends must not run from the live root.
 			// Merge into bin/runtimes, which other fixtures may already have created.
@@ -302,6 +318,8 @@ type Option func(*options)
 type options struct {
 	env       []string
 	noReserve bool
+	labHost   string
+	golden    bool
 }
 
 func optionsOf(opts []Option) options {
@@ -314,6 +332,20 @@ func optionsOf(opts []Option) options {
 
 // Env adds environment entries to a launched gateway's, after the harness's own (Launch only).
 func Env(extra []string) Option { return func(o *options) { o.env = append(o.env, extra...) } }
+
+// GoldenFixture makes Fixture the pinned tests' fixture (golden.go), the same on every run: it
+// reads none of the variables that add real models or runtimes (LOCALBASE_CONTRACT_MODELS and the
+// rest), and installs the chat model as a sparse file of its expected size, as Fixture does the
+// other modalities' models, so both implementations serve without its weights.
+func GoldenFixture() Option { return func(o *options) { o.golden = true } }
+
+// External is whether -url names a gateway the harness didn't launch.
+func External() bool { return *urlFlag != "" }
+
+// LabHost launches the Go gateway as a localbase_lab build that reads its host's memory from the
+// file at path (LOCALBASE_LAB_HOST_FILE) instead of the machine. The lab build differs from the
+// release only in that seam (TestLabSeamFilesAreTagged). Launch only, and only for "go".
+func LabHost(path string) Option { return func(o *options) { o.labHost = path } }
 
 // NoReserve sets the memory reserves to their minimum.
 // It is for a test about something past admission, with a fake backend that uses no
@@ -358,10 +390,17 @@ func Launch(impl string, opts ...Option) (*Target, error) {
 	var cmd *exec.Cmd
 	args := []string{"--root", rootDir, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
 		"--tts-port", fmt.Sprint(testutil.FreePort()), "--image-port", fmt.Sprint(testutil.FreePort()), "--video-port", fmt.Sprint(testutil.FreePort())}
+	if o.labHost != "" && impl != "go" {
+		return nil, fmt.Errorf("LabHost is for the Go gateway, not %q", impl)
+	}
 	switch impl {
 	case "go":
 		bin := filepath.Join(dir, "local-base")
-		if out, err := exec.Command("go", GoBuildArgs(bin)...).CombinedOutput(); err != nil {
+		build := GoBuildArgs(bin)
+		if o.labHost != "" {
+			build = append([]string{build[0], "-tags", "localbase_lab"}, build[1:]...)
+		}
+		if out, err := exec.Command("go", build...).CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("build: %v %s", err, out)
 		}
 		cmd = exec.Command(bin, args...)
@@ -383,6 +422,9 @@ func Launch(impl string, opts ...Option) (*Target, error) {
 	// Offline: a missing fixture must fail, not be downloaded (loopback stays reachable).
 	cmd.Env = Guarded(append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off"))
 	cmd.Env = append(cmd.Env, o.env...)
+	if o.labHost != "" {
+		cmd.Env = append(cmd.Env, "LOCALBASE_LAB_HOST_FILE="+o.labHost)
+	}
 	cmd.Env = append(cmd.Env, CoverEnv()...)
 	logf, _ := fsguard.Create(filepath.Join(dir, "serve.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf

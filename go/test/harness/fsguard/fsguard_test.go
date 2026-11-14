@@ -107,6 +107,10 @@ func TestFSGuard(t *testing.T) {
 	refusedPanic("RemoveAll outside", func() { _ = RemoveAll(victim) })
 	refusedPanic("Grow outside", func() { _ = Grow(victim, 1<<20) })
 	refused("CopyDir outside", CopyDir(root, filepath.Join(outside, "copy")))
+	t.Setenv(UpdateGoldenEnv, "")
+	refused("WriteGolden without LOCALBASE_UPDATE_GOLDEN", WriteGolden("x.json", []byte("{}")))
+	t.Setenv(UpdateGoldenEnv, "1")
+	refused("WriteGolden out of testdata/golden", WriteGolden("../../escape.json", []byte("{}")))
 
 	// Nothing outside changed.
 	if b, _ := os.ReadFile(victim); string(b) != "precious" {

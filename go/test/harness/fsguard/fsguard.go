@@ -4,8 +4,8 @@
 //
 // The plain-named writes (WriteFile, Create, Append, OpenRW, MkdirAll, Chmod, Symlink,
 // RemoveLink, RemoveAll, Grow) panic on a guard refusal and return any other error, as the
-// suites' must* forms did. Sparse, CopyDir, CloneModel and AssertNoLinks return a refusal as an
-// error wrapping ErrGuard and never panic.
+// suites' must* forms did. Sparse, CopyDir, CloneModel, AssertNoLinks and WriteGolden return a
+// refusal as an error wrapping ErrGuard and never panic.
 package fsguard
 
 import (
@@ -427,6 +427,36 @@ func AssertNoLinks(root string) error {
 		}
 		return nil
 	})
+}
+
+// UpdateGoldenEnv is the variable that lets a test rewrite its goldens: WriteGolden refuses
+// without LOCALBASE_UPDATE_GOLDEN=1.
+const UpdateGoldenEnv = "LOCALBASE_UPDATE_GOLDEN"
+
+// WriteGolden returns a guard refusal as an error wrapping ErrGuard, and never panics.
+// It writes a test's golden file under its package's testdata/golden (the test's working
+// directory is its package), and only when LOCALBASE_UPDATE_GOLDEN=1: goldens are source files,
+// so nothing else in a run may write them. A name that leaves testdata/golden is refused too.
+func WriteGolden(name string, b []byte) error {
+	if os.Getenv(UpdateGoldenEnv) != "1" {
+		return fmt.Errorf("%w: %s is not 1, so goldens are read-only", ErrGuard, UpdateGoldenEnv)
+	}
+	dir, err := filepath.Abs(filepath.Join("testdata", "golden"))
+	if err != nil {
+		return err
+	}
+	// The name is checked before anything is made, so a refused one leaves no directory behind.
+	if path := filepath.Join(dir, name); !within(path, dir) || path == dir {
+		return fmt.Errorf("%w: golden %q leaves %s", ErrGuard, name, dir)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	root, err := registerScratch(dir)
+	if err != nil {
+		return err
+	}
+	return guardedWriteFile(filepath.Join(root, name), b, 0o644)
 }
 
 func realRootOf(root string) string {
