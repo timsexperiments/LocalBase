@@ -1,0 +1,147 @@
+{
+ "_frozen": {
+  "from": "7282aac5d6dc",
+  "by": "go/tools/golden/jstest-parity.ts",
+  "note": "The TS UI's outputs for attachments.test.ts's inputs, run once before the TypeScript UI was retired. Reviewed by hand from here on: a change here is a change to what the Go page does."
+ },
+ "readAttachments": {
+  "text file": {
+   "ok": [
+    {
+     "name": "notes.md",
+     "size": 10,
+     "kind": "text",
+     "text": "# Hi\nthere"
+    }
+   ]
+  },
+  "code files": {
+   "ok": [
+    {
+     "name": "a.go",
+     "size": 9,
+     "kind": "text",
+     "text": "package a"
+    },
+    {
+     "name": "b.py",
+     "size": 8,
+     "kind": "text",
+     "text": "print(1)"
+    }
+   ]
+  },
+  "png, jpeg and webp": {
+   "ok": [
+    {
+     "name": "a.png",
+     "size": 12,
+     "kind": "image",
+     "url": "data:image/png;base64,iVBORw0KGgoAAAAN"
+    },
+    {
+     "name": "b.jpg",
+     "size": 6,
+     "kind": "image",
+     "url": "data:image/jpeg;base64,/9j/4AAQ"
+    },
+    {
+     "name": "c.webp",
+     "size": 16,
+     "kind": "image",
+     "url": "data:image/webp;base64,UklGRgAAAABXRUJQVlA4IA=="
+    }
+   ]
+  },
+  "image without vision": {
+   "error": "This model does not support image inputs."
+  },
+  "image that is not an image": {
+   "error": "fake.png: choose a PNG, JPEG, or WebP image."
+  },
+  "pdf": {
+   "error": "Choose a UTF-8 text or code file. PDF, Office documents, and archives are not supported."
+  },
+  "empty": {
+   "error": "empty.txt: choose a nonempty file under 128 KiB."
+  },
+  "too big text": {
+   "error": "big.txt: choose a nonempty file under 128 KiB."
+  },
+  "total text over 256 KiB": {
+   "error": "Text attachments must total 256 KiB or less."
+  },
+  "not UTF-8": {
+   "error": "bad.txt: the file must contain UTF-8 text."
+  },
+  "NUL byte": {
+   "error": "bin.txt: binary files are not supported."
+  },
+  "five files": {
+   "error": "Attach up to 4 files per message."
+  },
+  "over the count with existing": {
+   "error": "Attach up to 4 files per message."
+  },
+  "retained storage full": {
+   "error": "Attachments open in this browser must total 16 MiB or less. Delete an attachment conversation, reload the page, or remove draft files."
+  }
+ },
+ "accept": [
+  ".txt,.md,.csv,.tsv,.json,.jsonl,.yaml,.yml,.xml,.log,.js,.jsx,.ts,.tsx,.py,.go,.rs,.java,.c,.h,.cpp,.css,.html,.sql,.sh,.toml",
+  ".txt,.md,.csv,.tsv,.json,.jsonl,.yaml,.yml,.xml,.log,.js,.jsx,.ts,.tsx,.py,.go,.rs,.java,.c,.h,.cpp,.css,.html,.sql,.sh,.toml,image/png,image/jpeg,image/webp",
+  ""
+ ],
+ "conversations": {
+  "plain": [
+   {
+    "conversation": null,
+    "request": null
+   },
+   {
+    "conversation": null,
+    "request": null
+   }
+  ],
+  "image": [
+   {
+    "conversation": "Choose a model that supports image inputs, or remove a.png.",
+    "request": "Choose a model that supports image inputs, or remove a.png."
+   },
+   {
+    "conversation": null,
+    "request": null
+   }
+  ],
+  "text": [
+   {
+    "conversation": null,
+    "request": null
+   },
+   {
+    "conversation": null,
+    "request": null
+   }
+  ],
+  "missing": [
+   {
+    "conversation": "This saved conversation is missing attachments from an earlier session. Start a new conversation to send messages or retry.",
+    "request": "This saved conversation is missing attachments from an earlier session. Start a new conversation to send messages or retry."
+   },
+   {
+    "conversation": "This saved conversation is missing attachments from an earlier session. Start a new conversation to send messages or retry.",
+    "request": "This saved conversation is missing attachments from an earlier session. Start a new conversation to send messages or retry."
+   }
+  ],
+  "too large": [
+   {
+    "conversation": null,
+    "request": "This conversation is too large to send. Start a new conversation with a shorter prompt or fewer attachments."
+   },
+   {
+    "conversation": null,
+    "request": "This conversation is too large to send. Start a new conversation with a shorter prompt or fewer attachments."
+   }
+  ]
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "_frozen": {
+  "from": "7282aac5d6dc",
+  "by": "go/tools/golden/jstest-parity.ts",
+  "note": "The TS UI's outputs for markdown.test.ts's inputs, run once before the TypeScript UI was retired. Reviewed by hand from here on: a change here is a change to what the Go page does."
+ },
+ "html": {
+  "Hello **world** and *you* and `code` and ~~gone~~.": "<p>Hello <strong>world</strong> and <em>you</em> and <code>code</code> and <del>gone</del>.</p>",
+  "# Title\n\nSome text.\n\n## Second\n\n### Third": "<h1>Title</h1><p>Some text.</p><h2>Second</h2><h3>Third</h3>",
+  "```go\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n```": "<pre><code class=\"language-go\">func main() {\\n\tfmt.Println(&quot;hi&quot;)\\n}\\n</code></pre>",
+  "```\nplain\n```": "<pre><code>plain\\n</code></pre>",
+  "- one\n- two\n- three": "<ul><li>one</li><li>two</li><li>three</li></ul>",
+  "1. first\n2. second\n3. third": "<ol><li>first</li><li>second</li><li>third</li></ol>",
+  "3. starts at three\n4. four": "<ol start=\"3\"><li>starts at three</li><li>four</li></ol>",
+  "- parent\n  - child\n  - child two\n- next": "<ul><li>parent\\n<ul><li>child</li><li>child two</li></ul></li><li>next</li></ul>",
+  "> quoted\n> lines": "<blockquote><p>quoted\\nlines</p></blockquote>",
+  "| a | b |\n|---|:-:|\n| 1 | 2 |\n| 3 | 4 |": "<table><thead><tr><th>a</th><th style=\"text-align:center\">b</th></tr></thead><tbody><tr><td>1</td><td style=\"text-align:center\">2</td></tr><tr><td>3</td><td style=\"text-align:center\">4</td></tr></tbody></table>",
+  "| left | right |\n|:--|--:|\n| x | y |": "<table><thead><tr><th style=\"text-align:left\">left</th><th style=\"text-align:right\">right</th></tr></thead><tbody><tr><td style=\"text-align:left\">x</td><td style=\"text-align:right\">y</td></tr></tbody></table>",
+  "A [link](https://example.com) and <https://example.org>.": "<p>A <a href=\"https://example.com\">link</a> and <a href=\"https://example.org\">https://example.org</a>.</p>",
+  "See https://example.com/path?q=1.": "<p>See <a href=\"https://example.com/path?q=1\">https://example.com/path?q=1</a>.</p>",
+  "Line one  \nLine two\\\nLine three": "<p>Line one<br/>\\nLine two<br/>\\nLine three</p>",
+  "---": "<hr/>",
+  "Escaped \\*not em\\* and \\`not code\\`.": "<p>Escaped *not em* and `not code`.</p>",
+  "snake_case_name stays and __strong__ works": "<p>snake_case_name stays and <strong>strong</strong> works</p>",
+  "Paragraph one\nstill one.\n\nParagraph two.": "<p>Paragraph one\\nstill one.</p><p>Paragraph two.</p>",
+  "Text then\n```js\ncode()\n```\nafter": "<p>Text then</p><pre><code class=\"language-js\">code()\\n</code></pre><p>after</p>",
+  "**bold *nested em* bold**": "<p><strong>bold <em>nested em</em> bold</strong></p>",
+  "1. item\n\n   continued paragraph\n2. next": "<ol><li><p>item</p><p>continued paragraph</p></li><li><p>next</p></li></ol>"
+ }
+}
