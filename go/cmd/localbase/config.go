@@ -242,7 +242,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 	var r *root.Root
 	if restart || (plan.RestartRequired && policy == "auto") || wait {
 		r = &root.Root{Dir: dir}
-		in, err := service.Inspect(r, false)
+		in, err := service.NewManager().Inspect(r, false)
 		if err != nil {
 			return nil, err
 		}
@@ -292,17 +292,18 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 			return nil, err
 		}
 	}
+	svc := service.NewManager()
 	activate := func() error {
 		if restart {
 			if r == nil {
 				r = &root.Root{Dir: dir}
 			}
-			if _, err := service.RestartWithin(r, lease); err != nil {
+			if _, err := svc.RestartWithin(r, lease); err != nil {
 				return err
 			}
 		}
 		if wait {
-			return service.WaitReady(r, 30*time.Second)
+			return svc.WaitReady(r, 30*time.Second)
 		}
 		return nil
 	}

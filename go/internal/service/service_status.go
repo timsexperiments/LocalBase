@@ -91,14 +91,14 @@ func readHealth(o *root.Owner) json.RawMessage {
 }
 
 // Inspect reports the service and gateway state of a root.
-func Inspect(r *root.Root, acceptedStart bool) (Inspection, error) {
+func (g Manager) Inspect(r *root.Root, acceptedStart bool) (Inspection, error) {
 	m, err := MetadataFor(r.Dir)
 	if err != nil {
 		return Inspection{}, err
 	}
 	def, defErr := os.ReadFile(m.DefinitionPath)
 	installed := defErr == nil
-	obs, err := inspect(m)
+	obs, err := g.inspect(m)
 	if err != nil {
 		obs = observation{state: "unavailable"}
 	}

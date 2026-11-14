@@ -119,8 +119,19 @@ type result struct {
 	stdout, stderr string
 }
 
-// Runner runs a manager command (tests replace it).
-var Runner = func(args ...string) (result, error) {
+// Manager runs the user service manager's commands (launchctl, systemctl) for a root's service:
+// starting, stopping, removing and inspecting it. Every command one operation runs goes through the
+// Manager it was asked of, so a test's Manager sees them all.
+type Manager struct {
+	// runner runs one manager command (tests: a fake that records what it was asked); nil runs it.
+	runner func(args ...string) (result, error)
+}
+
+// NewManager is the Manager that runs the system's service manager.
+func NewManager() Manager { return Manager{} }
+
+// runCommand runs a manager command.
+func runCommand(args ...string) (result, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), managerTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
@@ -147,12 +158,16 @@ func executable(m Metadata) string {
 	return "/usr/bin/systemctl"
 }
 
-func run(m Metadata, args ...string) (result, error) {
-	return Runner(append([]string{executable(m)}, args...)...)
+func (g Manager) run(m Metadata, args ...string) (result, error) {
+	argv := append([]string{executable(m)}, args...)
+	if g.runner != nil {
+		return g.runner(argv...)
+	}
+	return runCommand(argv...)
 }
 
-func must(m Metadata, args ...string) error {
-	r, err := run(m, args...)
+func (g Manager) must(m Metadata, args ...string) error {
+	r, err := g.run(m, args...)
 	if err != nil {
 		return err
 	}
@@ -178,17 +193,17 @@ type observation struct {
 	hasRestarts                                 bool
 }
 
-func inspect(m Metadata) (observation, error) {
+func (g Manager) inspect(m Metadata) (observation, error) {
 	if m.Manager == "launchd" {
-		if r, err := run(m, "print", domain()); err != nil || r.code != 0 {
+		if r, err := g.run(m, "print", domain()); err != nil || r.code != 0 {
 			return observation{}, errorf("The launchd GUI user domain is unavailable. Sign in to a macOS user session or use foreground \"local-base serve\".")
 		}
-		r, err := run(m, "print", target(m))
+		r, err := g.run(m, "print", target(m))
 		if err != nil {
 			return observation{}, err
 		}
 		o := observation{available: true}
-		if d, err := run(m, "print-disabled", domain()); err == nil && d.code == 0 {
+		if d, err := g.run(m, "print-disabled", domain()); err == nil && d.code == 0 {
 			o.enabled = parseLaunchdEnabled(d.stdout, m.ServiceID)
 		}
 		if r.code != 0 {
@@ -208,7 +223,7 @@ func inspect(m Metadata) (observation, error) {
 		o.failed = lastExit != nil && *lastExit != 0 && !running
 		return o, nil
 	}
-	r, err := run(m, "--user", "show", m.UnitName,
+	r, err := g.run(m, "--user", "show", m.UnitName,
 		"--property=LoadState,ActiveState,SubState,MainPID,ExecMainCode,ExecMainStatus,NRestarts", "--no-pager")
 	if err != nil || r.code != 0 {
 		return observation{}, errorf("The systemd user manager is unavailable. Ensure the user bus is running or use foreground \"local-base serve\".")
@@ -228,7 +243,7 @@ func inspect(m Metadata) (observation, error) {
 	if n, err := strconv.Atoi(rec["NRestarts"]); err == nil {
 		o.restarts, o.hasRestarts = n, true
 	}
-	if e, err := run(m, "--user", "is-enabled", m.UnitName); err == nil {
+	if e, err := g.run(m, "--user", "is-enabled", m.UnitName); err == nil {
 		v := strings.TrimSpace(e.stdout)
 		t, f := true, false
 		switch {

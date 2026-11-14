@@ -135,8 +135,9 @@ type Bundle struct {
 }
 
 // Collect gathers a bundle for the root dir. A read that fails doesn't stop it: the manifest says what
-// it went without.
-func Collect(ctx context.Context, dir string) *Bundle {
+// it went without. svc is the command's own service Manager: the bundle reads the service through it
+// and never makes another.
+func Collect(ctx context.Context, dir string, svc service.Manager) *Bundle {
 	generatedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 
 	specs := memory.DetectSpecs()
@@ -192,7 +193,7 @@ func Collect(ctx context.Context, dir string) *Bundle {
 	}
 
 	service := unavailable("service_unavailable")
-	if in, err := serviceInspection(dir); err == nil {
+	if in, err := serviceInspection(svc, dir); err == nil {
 		gw := object("state", in.Gateway.State)
 		if len(in.Gateway.Health) > 0 {
 			h, _ := jsjson.Parse(in.Gateway.Health)
@@ -277,8 +278,8 @@ func Collect(ctx context.Context, dir string) *Bundle {
 }
 
 // serviceInspection reads the service state without changing anything.
-func serviceInspection(dir string) (service.Inspection, error) {
-	return service.Inspect(&root.Root{Dir: dir}, false)
+func serviceInspection(svc service.Manager, dir string) (service.Inspection, error) {
+	return svc.Inspect(&root.Root{Dir: dir}, false)
 }
 
 func diagnosticManagerState(s string) bool {

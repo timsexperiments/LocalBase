@@ -155,10 +155,11 @@ func gatewayActivity(base, raw string) (busy bool, detail string, err error) {
 // managedOps stop and restart through the service manager. Stopping is confirmed, because the
 // sweep of §29 cannot cover this: a backend from before that version has no record for it.
 func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.Ops {
+	svc := service.NewManager()
 	return upgrade.Ops{
 		Stop: func() error {
 			c.Info("Stopping the gateway...")
-			_, err := service.Stop(e.Root)
+			_, err := svc.Stop(e.Root)
 			e.audit.Service("audit.service-stopped", err, "purpose", "upgrade", "disabled", err == nil)
 			if err != nil {
 				return err
@@ -173,7 +174,7 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 			// restart returns once the manager has taken it, which can be before the
 			// gateway listens. Smoke would then fail on a release that is fine, and a
 			// gateway that never comes up has to roll back.
-			if err := service.WaitReady(e.Root, e.readyWaitLimit()); err != nil {
+			if err := svc.WaitReady(e.Root, e.readyWaitLimit()); err != nil {
 				return fmt.Errorf("the gateway did not become ready: %w", err)
 			}
 			return nil
@@ -210,7 +211,7 @@ func gatherGatewayFacts(e *env, binary string) (upgrade.GatewayFacts, []string) 
 	if state != "active" {
 		return f, nil
 	}
-	if in, err := service.Inspect(e.Root, false); err == nil {
+	if in, err := service.NewManager().Inspect(e.Root, false); err == nil {
 		f.DefinitionInstalled, f.Reachable = in.Service.DefinitionInstalled, in.Service.ManagerAvailable
 	}
 	program, arguments := service.InstalledInvocation(e.Root.Dir)

@@ -10,6 +10,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
@@ -29,7 +30,7 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := diagnostics.Collect(context.Background(), dir)
+	b := diagnostics.Collect(context.Background(), dir, service.NewManager())
 	if b.DatabaseErr != nil {
 		c.Error("Could not read this root's database: %s", termsafe.Printable(b.DatabaseErr.Error()))
 	}

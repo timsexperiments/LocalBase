@@ -6,9 +6,9 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
@@ -36,18 +36,18 @@ func assertControllable(r *root.Root, m Metadata, token, op string) error {
 	return nil
 }
 
-func enable(m Metadata) error {
+func (g Manager) enable(m Metadata) error {
 	if m.Manager == "launchd" {
-		return must(m, "enable", target(m))
+		return g.must(m, "enable", target(m))
 	}
-	return must(m, "--user", "enable", m.UnitName)
+	return g.must(m, "--user", "enable", m.UnitName)
 }
 
-func disable(m Metadata) error {
+func (g Manager) disable(m Metadata) error {
 	if m.Manager == "launchd" {
-		return must(m, "disable", target(m))
+		return g.must(m, "disable", target(m))
 	}
-	res, err := run(m, "--user", "disable", m.UnitName)
+	res, err := g.run(m, "--user", "disable", m.UnitName)
 	if err != nil || res.code == 0 {
 		return err
 	}
@@ -55,49 +55,49 @@ func disable(m Metadata) error {
 	if strings.Contains(low, "does not exist") || strings.Contains(low, "not found") {
 		return nil
 	}
-	return must(m, "--user", "disable", m.UnitName)
+	return g.must(m, "--user", "disable", m.UnitName)
 }
 
-func startManager(d Definition) error {
+func (g Manager) startManager(d Definition) error {
 	if d.Manager == "launchd" {
-		if err := enable(d.Metadata); err != nil {
+		if err := g.enable(d.Metadata); err != nil {
 			return err
 		}
-		return must(d.Metadata, "bootstrap", domain(), d.DefinitionPath)
+		return g.must(d.Metadata, "bootstrap", domain(), d.DefinitionPath)
 	}
-	if err := must(d.Metadata, "--user", "daemon-reload"); err != nil {
+	if err := g.must(d.Metadata, "--user", "daemon-reload"); err != nil {
 		return err
 	}
-	if err := enable(d.Metadata); err != nil {
+	if err := g.enable(d.Metadata); err != nil {
 		return err
 	}
-	return must(d.Metadata, "--user", "start", d.UnitName)
+	return g.must(d.Metadata, "--user", "start", d.UnitName)
 }
 
-func stopManager(m Metadata, alsoDisable bool) error {
-	before, err := inspect(m)
+func (g Manager) stopManager(m Metadata, alsoDisable bool) error {
+	before, err := g.inspect(m)
 	if err != nil {
 		return err
 	}
 	if m.Manager == "launchd" {
 		if before.loaded {
-			if err := must(m, "bootout", target(m)); err != nil {
+			if err := g.must(m, "bootout", target(m)); err != nil {
 				return err
 			}
 		}
 	} else if before.loaded || before.active {
-		if err := must(m, "--user", "stop", m.UnitName); err != nil {
+		if err := g.must(m, "--user", "stop", m.UnitName); err != nil {
 			return err
 		}
 	}
 	if alsoDisable {
-		if err := disable(m); err != nil {
+		if err := g.disable(m); err != nil {
 			return err
 		}
 	}
 	deadline := time.Now().Add(managerTimeout)
 	for time.Now().Before(deadline) {
-		if o, err := inspect(m); err == nil && o.stopped(m) {
+		if o, err := g.inspect(m); err == nil && o.stopped(m) {
 			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -125,7 +125,7 @@ func waitOwnerGone(r *root.Root) error {
 		r.Dir, managerTimeout.Milliseconds())
 }
 
-func stopManaged(r *root.Root, m Metadata, alsoDisable bool) error {
+func (g Manager) stopManaged(r *root.Root, m Metadata, alsoDisable bool) error {
 	token := ""
 	if st, man := readManifest(r.Dir); st == "valid" && man.Root == r.Dir && man.ServiceID == m.ServiceID {
 		token = man.ServiceToken
@@ -135,14 +135,14 @@ func stopManaged(r *root.Root, m Metadata, alsoDisable bool) error {
 	}
 	r.ClearStale()
 	state, o, _ := ownerState(r)
-	obs, err := inspect(m)
+	obs, err := g.inspect(m)
 	if err != nil {
 		return err
 	}
 	if (state == "active" || state == "unknown") && o != nil && o.ServiceID == m.ServiceID && !obs.active && !obs.stopping {
 		return errorf("Cannot stop LocalBase for %s: the recorded managed gateway is not controlled by the current %s instance. No process was signaled.", r.Dir, m.Manager)
 	}
-	if err := stopManager(m, alsoDisable); err != nil {
+	if err := g.stopManager(m, alsoDisable); err != nil {
 		return err
 	}
 	return waitOwnerGone(r)
@@ -152,23 +152,23 @@ func stopManaged(r *root.Root, m Metadata, alsoDisable bool) error {
 // with a fresh token).
 // Start installs and starts the service, holding the root operation lease and
 // handing it to the gateway it launches.
-func Start(r *root.Root, restart, installMissing bool) (Inspection, error) {
+func (g Manager) Start(r *root.Root, restart, installMissing bool) (Inspection, error) {
 	lease, err := lease.AcquireOperation(r.Dir, "service-start")
 	if err != nil {
 		return Inspection{}, err
 	}
 	defer lease.Release()
-	return start(r, lease, restart, installMissing)
+	return g.start(r, lease, restart, installMissing)
 }
 
 // RestartWithin restarts the service for a caller holding the operation
 // lease (TS restartServiceWithinOperation); the lease is handed to the new
 // gateway.
-func RestartWithin(r *root.Root, lease *lease.Lease) (Inspection, error) {
-	return start(r, lease, true, false)
+func (g Manager) RestartWithin(r *root.Root, lease *lease.Lease) (Inspection, error) {
+	return g.start(r, lease, true, false)
 }
 
-func start(r *root.Root, lease *lease.Lease, restart, installMissing bool) (Inspection, error) {
+func (g Manager) start(r *root.Root, lease *lease.Lease, restart, installMissing bool) (Inspection, error) {
 	if err := refuseDefaultRootInTest(r.Dir); err != nil {
 		return Inspection{}, err
 	}
@@ -202,7 +202,7 @@ func start(r *root.Root, lease *lease.Lease, restart, installMissing bool) (Insp
 	}
 	r.ClearStale()
 	state, o, _ := ownerState(r)
-	obs, err := inspect(d.Metadata)
+	obs, err := g.inspect(d.Metadata)
 	if err != nil {
 		return Inspection{}, err
 	}
@@ -211,41 +211,42 @@ func start(r *root.Root, lease *lease.Lease, restart, installMissing bool) (Insp
 		prev.ServiceID == d.ServiceID && prev.Root == r.Dir && fingerprint(installedDef) == d.Manifest.DefinitionFingerprint
 	managedOwner := o != nil && o.ServiceID == d.ServiceID && (state == "active" || state == "unknown")
 	if !restart && unchanged && obs.active && (managedOwner || state == "missing") {
-		if err := enable(d.Metadata); err != nil {
+		if err := g.enable(d.Metadata); err != nil {
 			return Inspection{}, err
 		}
-		return Inspect(r, false)
+		return g.Inspect(r, false)
 	}
 	if obs.loaded || obs.active || obs.stopping || managedOwner {
-		if err := stopManaged(r, d.Metadata, true); err != nil {
+		if err := g.stopManaged(r, d.Metadata, true); err != nil {
 			return Inspection{}, err
 		}
 	}
 	if err := d.write(r.Dir); err != nil {
 		return Inspection{}, err
 	}
-	if err := startManager(d); err != nil {
+	if err := g.startManager(d); err != nil {
 		return Inspection{}, err
 	}
 	if err := lease.Handoff(token); err != nil {
 		return Inspection{}, err
 	}
-	return Inspect(r, true)
+	return g.Inspect(r, true)
 }
 
 // refuseDefaultRootInTest keeps a test binary away from the installed service: a test that forgot its
-// root would otherwise stop the real gateway on this machine.
+// root would otherwise stop the real gateway on this machine. testing.Testing is how a binary knows
+// it is one; linking it is why service is on the guard's list of packages that import "testing".
 func refuseDefaultRootInTest(dir string) error {
-	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") && root.IsDefault(dir) {
+	if testing.Testing() && root.IsDefault(dir) {
 		return errorf("A test tried to manage the service on the default root %s. Give it a scratch root.", dir)
 	}
 	return nil
 }
 
 // Stop stops and disables the service under the root operation lease.
-func Stop(r *root.Root) (in Inspection, err error) {
+func (g Manager) Stop(r *root.Root) (in Inspection, err error) {
 	err = lease.WithOperation(r.Dir, "stop", func() error {
-		in, err = StopWithin(r)
+		in, err = g.StopWithin(r)
 		return err
 	})
 	return in, err
@@ -280,7 +281,7 @@ func WaitStopped(r *root.Root, ports []int, listening func(int) bool, limit time
 }
 
 // StopWithin is Stop for a caller that holds the operation lease.
-func StopWithin(r *root.Root) (Inspection, error) {
+func (g Manager) StopWithin(r *root.Root) (Inspection, error) {
 	if err := refuseDefaultRootInTest(r.Dir); err != nil {
 		return Inspection{}, err
 	}
@@ -288,10 +289,10 @@ func StopWithin(r *root.Root) (Inspection, error) {
 	if err != nil {
 		return Inspection{}, err
 	}
-	if err := stopManaged(r, m, true); err != nil {
+	if err := g.stopManaged(r, m, true); err != nil {
 		return Inspection{}, err
 	}
-	return Inspect(r, false)
+	return g.Inspect(r, false)
 }
 
 // HasEvidence reports whether anything of a service exists for the root.
@@ -308,7 +309,7 @@ func HasEvidence(r *root.Root) bool {
 
 // Remove stops the service and deletes its definition and manifest. The
 // caller holds the operation lease.
-func Remove(r *root.Root) (Inspection, error) {
+func (g Manager) Remove(r *root.Root) (Inspection, error) {
 	if err := refuseDefaultRootInTest(r.Dir); err != nil {
 		return Inspection{}, err
 	}
@@ -316,7 +317,7 @@ func Remove(r *root.Root) (Inspection, error) {
 	if err != nil {
 		return Inspection{}, err
 	}
-	if err := stopManaged(r, m, true); err != nil {
+	if err := g.stopManaged(r, m, true); err != nil {
 		return Inspection{}, err
 	}
 	// A definition left behind is loaded again at the next login, so it is never left silently.
@@ -325,14 +326,14 @@ func Remove(r *root.Root) (Inspection, error) {
 	}
 	manifestErr := removeIfThere(manifestPath(r.Dir))
 	if m.Manager == "systemd-user" {
-		if err := must(m, "--user", "daemon-reload"); err != nil {
+		if err := g.must(m, "--user", "daemon-reload"); err != nil {
 			return Inspection{}, err
 		}
 	}
 	if manifestErr != nil {
 		return Inspection{}, errorf("Stopped the LocalBase service, but could not remove %s: %v. Remove that file by hand, or LocalBase will still report a service here.", manifestPath(r.Dir), manifestErr)
 	}
-	return Inspect(r, false)
+	return g.Inspect(r, false)
 }
 
 // removeIfThere removes path, and is fine if it's already gone. A failure gives its cause alone,
@@ -351,10 +352,10 @@ func removeIfThere(path string) error {
 
 // WaitReady waits until the gateway answers /health/ready with ready and
 // no restart is pending.
-func WaitReady(r *root.Root, timeout time.Duration) error {
+func (g Manager) WaitReady(r *root.Root, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		if in, err := Inspect(r, false); err == nil && in.Gateway.State == "ready" && answersReady(in.Gateway.URL) && !restartPending(r) {
+		if in, err := g.Inspect(r, false); err == nil && in.Gateway.State == "ready" && answersReady(in.Gateway.URL) && !restartPending(r) {
 			return nil
 		}
 		if time.Now().After(deadline) {
