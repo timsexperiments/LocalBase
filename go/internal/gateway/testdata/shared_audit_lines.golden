@@ -1,4 +1,4 @@
-{"attributes":{"actor_id":"\u003cthe API key's id\u003e","actor_kind":"api-key","count":0,"event":"audit.local-sessions-revoked","session_id":""},"message":"Local sessions revoked."}
+{"attributes":{"actor_id":"\u003cthe API key's id\u003e","actor_kind":"api-key","count":0,"event":"audit.local-sessions-revoked"},"message":"Local sessions revoked."}
 {"attributes":{"actor_id":"\u003cthe API key's id\u003e","actor_kind":"api-key","count":0,"event":"audit.local-sessions-revoked","session_id":"sess_1"},"message":"Local sessions revoked."}
 {"attributes":{"action":"reset","actor_id":"\u003cthe API key's id\u003e","actor_kind":"api-key","backend_id":"","event":"audit.model-backend-changed","target_id":"qwen3.5-4b-q4_k_m","target_kind":"model"},"message":"Administration change."}
 {"attributes":{"action":"import","actor_id":"\u003cthe API key's id\u003e","actor_kind":"api-key","backend_id":"llama.cpp-cpu","event":"audit.model-backend-changed","target_id":"golden-import","target_kind":"model"},"message":"Administration change."}

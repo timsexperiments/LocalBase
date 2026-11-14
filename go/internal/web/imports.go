@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
@@ -372,8 +373,8 @@ func (u *UI) auditBackendChoice(r *http.Request, action, model, backend string) 
 			kind, id = p.Kind, p.ID
 		}
 	}
-	u.d.Log.Info("Administration change.", "event", "audit.model-backend-changed", "action", action, "actor_kind", kind, "actor_id", id,
-		"target_kind", "model", "target_id", model, "backend_id", backend)
+	e := audit.BackendChangedEvent(audit.Actor{Kind: kind, ID: id}, action, model, backend)
+	u.d.Log.Info(e.Message, e.Attrs...)
 }
 
 func (u *UI) backendsPage(w http.ResponseWriter, r *http.Request) {
