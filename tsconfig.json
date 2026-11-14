@@ -12,5 +12,5 @@
     "types": ["bun"],
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/*-contract.ts", "scripts/runtimes/*-contract.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/runtimes/*-contract.ts"]
 }
