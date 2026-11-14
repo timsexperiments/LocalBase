@@ -53,9 +53,8 @@ func TestReadiness(t *testing.T) {
 			t.Errorf("modalities = %v", body["modalities"])
 		}
 	})
-	// Every configured media modality admits requests on both. Video arrives in
-	// Go with M6, so only TS lists it for now. An external gateway (-url, the
-	// M7 rehearsal) has its own media selection, so only the LLM is checked.
+	// Every configured media modality but video admits requests. An external gateway (-url, the M7
+	// rehearsal) has its own media selection, so only the LLM is checked there.
 	if len(harness.Targets(t)) == 1 && harness.Targets(t)[0].Name == "external" {
 		return
 	}
@@ -338,7 +337,7 @@ func j(v any) string {
 	return string(b)
 }
 
-// rejectionCases fail before admission in both implementations.
+// rejectionCases fail before admission.
 var rejectionCases = []struct{ path, body string }{
 	{"/v1/chat/completions", `not json`},
 	{"/v1/chat/completions", `{"model":"","messages":[{"role":"user","content":"x"}]}`},
@@ -386,8 +385,8 @@ func schemaCase(schema string) string {
 	return `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
 }
 
-// TestDifferentialRejections sends requests that fail validation to every
-// target and requires the same status, error type, code and param.
+// TestDifferentialRejections sends requests that fail validation to every target and requires an
+// error envelope for each. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialRejections(t *testing.T) {
 	for _, c := range rejectionCases {
 		var first *harness.Resp

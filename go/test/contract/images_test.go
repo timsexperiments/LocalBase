@@ -69,8 +69,8 @@ func imageForm(parts ...imgPart) (string, string) {
 	return b.String(), w.FormDataContentType()
 }
 
-// TestDifferentialImageRejections sends invalid image generation and edit
-// requests to both gateways; none reaches a backend.
+// TestDifferentialImageRejections sends invalid image generation and edit requests; none reaches a
+// backend.
 func TestDifferentialImageRejections(t *testing.T) {
 	harness.LogFreeMemoryOnFailure(t)
 	post := func(path, ctype, body string) map[string]*harness.Resp {
@@ -119,7 +119,7 @@ func TestDifferentialImageRejections(t *testing.T) {
 		"unknown model lora":     `{"prompt":"a","model":"no-such-model","lora_strength":1}`,
 		"files missing":          `{"prompt":"a","model":"realvis-xl-v5.0","size":"512x512","unknown_field":true}`,
 	} {
-		sameError(t, "generation "+label, gen(body))
+		wantError(t, "generation "+label, gen(body))
 	}
 
 	edit := func(parts ...imgPart) map[string]*harness.Resp {
@@ -134,8 +134,8 @@ func TestDifferentialImageRejections(t *testing.T) {
 	prompt := field("prompt", "a cat")
 	truncated := testPNG(16, 8)
 	truncated = truncated[:len(truncated)-20]
-	sameError(t, "edit as json", post("/v1/images/edits", "application/json", `{"prompt":"a"}`))
-	sameError(t, "edit no boundary", post("/v1/images/edits", "multipart/form-data; charset=utf-8", "x"))
+	wantError(t, "edit as json", post("/v1/images/edits", "application/json", `{"prompt":"a"}`))
+	wantError(t, "edit no boundary", post("/v1/images/edits", "multipart/form-data; charset=utf-8", "x"))
 	// Ordered: a request that reaches a backend makes its model active, and
 	// "files missing" must come last.
 	for _, c := range []struct {
@@ -179,12 +179,11 @@ func TestDifferentialImageRejections(t *testing.T) {
 		{"untyped broken jpeg", []imgPart{prompt, i2i, named("image", "photo", testJPEG(8, 8)[:30])}},
 		{"files missing", []imgPart{prompt, field("model", "sdxl-turbo"), pngImg, jpgImg, field("n", "2"), field("size", "512x512"), field("seed", "7")}},
 	} {
-		sameError(t, "edit "+c.label, edit(c.parts...))
+		wantError(t, "edit "+c.label, edit(c.parts...))
 	}
 }
 
-// TestImageReal generates and edits with DreamShaper 8 through sd-server on
-// both gateways (same seed, same runtime build) and checks the PNGs.
+// TestImageReal generates and edits with DreamShaper 8 through sd-server and checks the PNGs.
 func TestImageReal(t *testing.T) {
 	if os.Getenv("LOCALBASE_CONTRACT_IMAGE_MODELS") == "" || os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
 		t.Skip("needs LOCALBASE_CONTRACT_IMAGE_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
@@ -222,13 +221,6 @@ func TestImageReal(t *testing.T) {
 		e := decode(t, tg.Name+" edit", harness.Do(t, "POST", tg.BaseURL+"/v1/images/edits", eh, body))
 		outputs[tg.Name] = [2][]byte{g, e}
 	}
-	if len(harness.Targets(t)) == 2 {
-		a, b := outputs[harness.Targets(t)[0].Name], outputs[harness.Targets(t)[1].Name]
-		// Same seed, runtime build and tuning block: the same bytes.
-		if !bytes.Equal(a[0], b[0]) || !bytes.Equal(a[1], b[1]) {
-			t.Errorf("outputs differ: generation equal %v, edit equal %v", bytes.Equal(a[0], b[0]), bytes.Equal(a[1], b[1]))
-		}
-	}
 }
 
 // named is a file part with a filename (Bun types uploads by extension).
@@ -238,7 +230,7 @@ func named(field, filename string, b []byte) imgPart {
 
 // TestDifferentialRetrySemantics: clients (device workers, coding agents)
 // retry on 503 with Retry-After. A start that fails transiently must keep
-// that contract on both gateways, every time it is asked again; a failure
+// that contract every time it is asked again; a failure
 // that needs someone to act answers its real 4xx without Retry-After.
 func TestDifferentialRetrySemantics(t *testing.T) {
 	if os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
@@ -268,14 +260,14 @@ func TestDifferentialRetrySemantics(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		rs := ask("dreamshaper-8-lcm")
 		check(fmt.Sprintf("failed start #%d", i), rs, 503, "service_unavailable", true)
-		sameError(t, fmt.Sprintf("failed start #%d", i), rs)
+		wantError(t, fmt.Sprintf("failed start #%d", i), rs)
 	}
 	// Permanent until someone installs it: 409, no Retry-After. A built-in
 	// entry: a former one kept as a user entry (#368) is sized first and,
 	// on a busy machine, refused for memory.
 	// Both size the model first, so on a busy machine it is a memory 503.
 	missing := ask("juggernaut-xl-v9")
-	sameError(t, "files missing", missing)
+	wantError(t, "files missing", missing)
 	if r := missing["go"]; r != nil && r.Status == 422 && r.JSON(t)["error"].(map[string]any)["code"] == "model_too_large" {
 		t.Log("files missing: the model can never fit this machine; the 409 path was not reached")
 	} else if r := missing["go"]; r != nil && r.Status == 503 && r.JSON(t)["error"].(map[string]any)["code"] == "insufficient_memory" {
@@ -284,12 +276,8 @@ func TestDifferentialRetrySemantics(t *testing.T) {
 		check("files missing", missing, 409, "model_install_consent_required", false)
 	}
 	// A missing multi-file model is sized from the catalog first, so on a busy
-	// machine it is a transient memory 503; either way both gateways agree.
-	flux := ask("flux1-schnell-q4_0")
-	sameError(t, "missing catalog-sized model", flux)
-	if a, b := flux["ts"], flux["go"]; a != nil && b != nil && (a.Header.Get("Retry-After") == "") != (b.Header.Get("Retry-After") == "") {
-		t.Errorf("Retry-After differs: ts %q, go %q", a.Header.Get("Retry-After"), b.Header.Get("Retry-After"))
-	}
+	// machine it is a transient memory 503; either way it is refused.
+	wantError(t, "missing catalog-sized model", ask("flux1-schnell-q4_0"))
 }
 
 func TestFreeMemoryReading(t *testing.T) {

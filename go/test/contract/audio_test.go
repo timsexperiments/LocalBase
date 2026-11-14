@@ -2,7 +2,6 @@ package contract
 
 import (
 	"bytes"
-	"encoding/json"
 	"mime/multipart"
 	"os"
 	"os/exec"
@@ -35,9 +34,8 @@ func multipartBody(fields [][2]string) (string, string) {
 	return b.String(), w.FormDataContentType()
 }
 
-// TestDifferentialTranscriptionRejections sends invalid transcription
-// requests to both gateways and requires the same status, type, code and
-// param.
+// TestDifferentialTranscriptionRejections sends invalid transcription requests and requires an
+// error envelope for each. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialTranscriptionRejections(t *testing.T) {
 	cases := []formCase{
 		{name: "no file", fields: [][2]string{{"model", "whisper-base-en-q8_0"}}},
@@ -87,11 +85,8 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 	}
 	// Method and permission.
 	each(t, func(t *testing.T, tg *harness.Target) {
-		// TS reads any method's body as a form; Go takes POST only (DESIGN §13.6).
-		wantGET := 405
-		if tg.Name == "ts" {
-			wantGET = 400
-		}
+		// POST only (DESIGN §13.6; TS read any method's body as a form).
+		const wantGET = 405
 		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/audio/transcriptions", harness.Bearer(tg.Key), ""); r.Status != wantGET {
 			t.Errorf("GET: %d, want %d", r.Status, wantGET)
 		}
@@ -123,8 +118,8 @@ func speechClip(t *testing.T) []byte {
 	return b
 }
 
-// TestTranscriptionReal transcribes the same clip on both gateways with
-// whisper tiny.en and requires the same text in every response format.
+// TestTranscriptionReal transcribes a clip with whisper tiny.en in every response format and
+// requires a transcript.
 func TestTranscriptionReal(t *testing.T) {
 	if os.Getenv("LOCALBASE_CONTRACT_STT_MODELS") == "" || os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
 		t.Skip("needs LOCALBASE_CONTRACT_STT_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
@@ -151,23 +146,6 @@ func TestTranscriptionReal(t *testing.T) {
 		}
 		if !strings.Contains(strings.ToLower(results[tg.Name]["text"]), " ") {
 			t.Errorf("%s: transcript looks empty: %q", tg.Name, results[tg.Name]["text"])
-		}
-	}
-	if len(harness.Targets(t)) == 2 {
-		a, b := results[harness.Targets(t)[0].Name], results[harness.Targets(t)[1].Name]
-		for format := range a {
-			if format == "verbose_json" || format == "json" {
-				var ja, jb any
-				json.Unmarshal([]byte(a[format]), &ja)
-				json.Unmarshal([]byte(b[format]), &jb)
-				if d := harness.DiffJSON("", ja, jb, nil); len(d) > 0 {
-					t.Errorf("%s differs: %v", format, d)
-				}
-				continue
-			}
-			if a[format] != b[format] {
-				t.Errorf("%s differs:\n ts: %q\n go: %q", format, a[format], b[format])
-			}
 		}
 	}
 	t.Logf("transcript: %s", results[harness.Targets(t)[0].Name]["text"])

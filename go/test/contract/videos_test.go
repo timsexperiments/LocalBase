@@ -3,8 +3,6 @@ package contract
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +11,7 @@ import (
 )
 
 // TestDifferentialVideoRejections sends video requests that never start a
-// job to both gateways (the harness selects wan2.1-t2v-1.3b-q8_0 and
+// job (the harness selects wan2.1-t2v-1.3b-q8_0 and
 // fastwan2.2-ti2v-5b-q6_k without their files): validation, profile
 // mismatches, unknown models, install consent, the multipart form, and the
 // job routes for jobs that do not exist. Status, error type, code, param,
@@ -77,13 +75,13 @@ func TestDifferentialVideoRejections(t *testing.T) {
 		"ti2v files missing": request(fastwan, 480, 832, 81, 16, map[string]any{"input_reference": ref}),
 	}
 	for label, body := range cases {
-		sameError(t, "create "+label, send("POST", "/v1/videos", "application/json", body))
+		wantError(t, "create "+label, send("POST", "/v1/videos", "application/json", body))
 	}
-	sameError(t, "create GET", send("GET", "/v1/videos", "", ""))
+	wantError(t, "create GET", send("GET", "/v1/videos", "", ""))
 
 	form := func(label string, parts ...imgPart) {
 		body, ct := imageForm(parts...)
-		sameError(t, "multipart "+label, send("POST", "/v1/videos", ct, body))
+		wantError(t, "multipart "+label, send("POST", "/v1/videos", ct, body))
 	}
 	fields := []imgPart{field("model", fastwan), field("prompt", "a fox"), field("width", "480"), field("height", "832"),
 		field("frames", "81"), field("fps", "16")}
@@ -98,7 +96,7 @@ func TestDifferentialVideoRejections(t *testing.T) {
 	form("ti2v png reference", append(append([]imgPart{}, fields...), pngRef)...)
 	form("t2v reference", append([]imgPart{field("model", wan), field("prompt", "a fox"), field("width", "320"),
 		field("height", "320"), field("frames", "33"), field("fps", "16")}, pngRef)...)
-	sameError(t, "multipart no boundary", send("POST", "/v1/videos", "multipart/form-data; charset=utf-8", "x"))
+	wantError(t, "multipart no boundary", send("POST", "/v1/videos", "multipart/form-data; charset=utf-8", "x"))
 
 	const id = "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab"
 	for _, c := range []struct{ method, path string }{
@@ -112,14 +110,13 @@ func TestDifferentialVideoRejections(t *testing.T) {
 		{"GET", "/v1/videos/not-a-job"},
 		{"GET", "/v1/videos/" + id + "/frames"},
 	} {
-		sameError(t, c.method+" "+c.path, send(c.method, c.path, "", ""))
+		wantError(t, c.method+" "+c.path, send(c.method, c.path, "", ""))
 	}
 }
 
-// TestDifferentialVideoJobFailure starts the same job on both gateways. The
-// harness's wan2.1 files are sparse placeholders at the catalog sizes, so
-// both accept the job (202) and both must end it failed with the same
-// public error once the runtime refuses the weights.
+// TestDifferentialVideoJobFailure starts a job. The harness's wan2.1 files are sparse placeholders
+// at the catalog sizes, so the gateway accepts the job (202) and must end it failed once the
+// runtime refuses the weights.
 func TestDifferentialVideoJobFailure(t *testing.T) {
 	body := `{"model":"wan2.1-t2v-1.3b-q8_0","prompt":"a lighthouse at dusk","width":320,"height":320,"frames":33,"fps":16,"input":{"kind":"text"}}`
 	final := map[string]map[string]any{}
@@ -151,41 +148,10 @@ func TestDifferentialVideoJobFailure(t *testing.T) {
 			t.Errorf("%s: content of a failed job answered %d", tg.Name, c.Status)
 		}
 	}
-	var first map[string]any
 	for name, s := range final {
 		t.Logf("%s: %v", name, s["error"])
 		if s["status"] != "failed" {
 			t.Errorf("%s: %v", name, s)
 		}
-		if first == nil {
-			first = s
-			continue
-		}
-		// A memory refusal names the usable memory sampled when each job
-		// started; the two jobs run one after the other, so only that
-		// figure may differ. Near the threshold one may be refused for
-		// memory while the other starts and fails: each is right for the
-		// memory it sampled.
-		code := func(m map[string]any) any { e, _ := m["error"].(map[string]any); return e["code"] }
-		if (code(s) == "insufficient_memory") != (code(first) == "insufficient_memory") {
-			t.Logf("one job was refused for memory, the other started: %v vs %v", final["go"]["error"], final["ts"]["error"])
-			continue
-		}
-		// Deliberate difference (DESIGN's list of them): Go's memory refusal says what has the memory and what
-		// to do, so its words aren't TS's. The code must still match; TestVideoGolden pins the words.
-		if code(s) == "insufficient_memory" {
-			if code(s) != code(first) {
-				t.Errorf("codes differ: %v vs %v", final["go"]["error"], final["ts"]["error"])
-			}
-			continue
-		}
-		if sampledUsable(fmt.Sprint(s["error"])) != sampledUsable(fmt.Sprint(first["error"])) {
-			t.Errorf("errors differ: %v vs %v", final["go"]["error"], final["ts"]["error"])
-		}
 	}
 }
-
-var usableRe = regexp.MustCompile(`only [0-9.]+ GiB is usable`)
-
-// sampledUsable masks the host-sampled usable memory in an admission message.
-func sampledUsable(msg string) string { return usableRe.ReplaceAllString(msg, "only N GiB is usable") }

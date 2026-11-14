@@ -35,53 +35,22 @@ func voiceForm(parts ...voicePart) (string, string) {
 	return b.String(), w.FormDataContentType()
 }
 
-// sameError requires the same status and error envelope on every target.
-func sameError(t *testing.T, label string, rs map[string]*harness.Resp) {
+// wantError requires every target to answer label with an error: a status of 400 or more and a
+// whole error envelope. (Until step 7 it also required TS and Go to answer alike.)
+func wantError(t *testing.T, label string, rs map[string]*harness.Resp) {
 	t.Helper()
-	var first *harness.Resp
-	var firstName string
 	for _, tg := range harness.Targets(t) {
 		r := rs[tg.Name]
 		if r.Status < 400 {
 			t.Errorf("%s: %s answered %d %s", label, tg.Name, r.Status, r.Body)
-			return
-		}
-		if first == nil {
-			first, firstName = r, tg.Name
 			continue
 		}
-		ea, _ := first.JSON(t)["error"].(map[string]any)
-		eb, _ := r.JSON(t)["error"].(map[string]any)
-		if ea["code"] == "model_too_large" && eb["code"] == "model_too_large" {
-			// Go's sentence also says what to change (DESIGN, Deliberate differences); what
-			// comes before it must still match.
-			ea["message"], eb["message"] = modelTooLargeFacts(ea["message"]), modelTooLargeFacts(eb["message"])
-		}
-		for _, k := range []string{"type", "code", "param", "message"} {
-			if ea[k] != eb[k] || first.Status != r.Status {
-				t.Errorf("%s:\n %s %d %s\n %s %d %s", label, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
-				return
-			}
-		}
-		if a, b := first.Header.Get("Allow"), r.Header.Get("Allow"); a != b {
-			t.Errorf("%s: Allow %q vs %q", label, a, b)
-		}
+		r.ErrorCode(t)
 	}
 }
 
-// modelTooLargeFacts is a model_too_large message up to what it advises.
-func modelTooLargeFacts(message any) any {
-	text, ok := message.(string)
-	if !ok {
-		return message
-	}
-	facts, _, _ := strings.Cut(text, " Use a smaller")
-	return facts
-}
-
-// TestDifferentialVoices runs the custom voice lifecycle on both gateways:
-// the same upload must store the same normalized recording, and every
-// rejection must match.
+// TestDifferentialVoices runs the custom voice lifecycle: an upload stores a normalized recording,
+// and every rejection answers with an error envelope. (Until step 7 TS and Go had to agree.)
 func TestDifferentialVoices(t *testing.T) {
 	const base = "/_localbase/voices"
 	type call struct {
@@ -143,32 +112,31 @@ func TestDifferentialVoices(t *testing.T) {
 		{"too short", []voicePart{{name: "name", value: "Narrator"}, {name: "consent", value: "true"}, {name: "audio", file: clip[:44+16000*2*2]}}},
 	}
 	for _, c := range rejections {
-		sameError(t, "create "+c.label, create(c.parts...))
+		wantError(t, "create "+c.label, create(c.parts...))
 	}
-	sameError(t, "create as json", admin("POST", base, "application/json", `{"name":"Narrator"}`))
-	// Deliberate difference: TS fails to parse the form and answers 500
-	// gateway_error; Go answers 400 validation_failed. Both use the envelope.
+	wantError(t, "create as json", admin("POST", base, "application/json", `{"name":"Narrator"}`))
+	// A form without a boundary is 400 validation_failed (TS answered 500 gateway_error).
 	for name, r := range admin("POST", base, "multipart/form-data; charset=utf-8", "x") {
-		if want := map[string]int{"ts": 500, "go": 400}[name]; r.Status != want {
+		if r.Status != 400 {
 			t.Errorf("%s create without a boundary: %d %s", name, r.Status, r.Body)
 		}
 		r.ErrorCode(t)
 	}
-	sameError(t, "PUT collection", admin("PUT", base, "", ""))
+	wantError(t, "PUT collection", admin("PUT", base, "", ""))
 	reader := func(method, path, ctype, body string) map[string]*harness.Resp {
 		return run(func(tg *harness.Target) call { return call{method, path, tg.Key, ctype, body} })
 	}
 	body, ct := voiceForm(voicePart{name: "name", value: "Narrator"}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
-	sameError(t, "create as reader", reader("POST", base, ct, body))
-	sameError(t, "list as chat-only", run(func(tg *harness.Target) call { return call{"GET", base, tg.ChatOnly, "", ""} }))
-	sameError(t, "list without credentials", run(func(tg *harness.Target) call { return call{"GET", base, "", "", ""} }))
-	sameError(t, "unknown voice", admin("GET", base+"/voice-000000000000", "", ""))
-	sameError(t, "unknown voice audio", admin("GET", base+"/voice-000000000000/audio", "", ""))
-	sameError(t, "delete unknown voice", admin("DELETE", base+"/voice-000000000000", "", ""))
-	sameError(t, "malformed id", admin("GET", base+"/voice-XYZ", "", ""))
-	sameError(t, "extra segment", admin("GET", base+"/voice-000000000000/audio/x", "", ""))
+	wantError(t, "create as reader", reader("POST", base, ct, body))
+	wantError(t, "list as chat-only", run(func(tg *harness.Target) call { return call{"GET", base, tg.ChatOnly, "", ""} }))
+	wantError(t, "list without credentials", run(func(tg *harness.Target) call { return call{"GET", base, "", "", ""} }))
+	wantError(t, "unknown voice", admin("GET", base+"/voice-000000000000", "", ""))
+	wantError(t, "unknown voice audio", admin("GET", base+"/voice-000000000000/audio", "", ""))
+	wantError(t, "delete unknown voice", admin("DELETE", base+"/voice-000000000000", "", ""))
+	wantError(t, "malformed id", admin("GET", base+"/voice-XYZ", "", ""))
+	wantError(t, "extra segment", admin("GET", base+"/voice-000000000000/audio/x", "", ""))
 
-	// Create: the same recording on both.
+	// Create: a recording.
 	created := create(voicePart{name: "name", value: "  Narrator\t Voice "}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
 	ids := map[string]string{}
 	var want map[string]any
@@ -212,10 +180,10 @@ func TestDifferentialVoices(t *testing.T) {
 			t.Errorf("%s audio: %d %s", name, r.Status, r.Header)
 		}
 	}
-	sameError(t, "audio as reader", on("GET", at("/audio"), asReader, "", ""))
-	sameError(t, "POST audio", on("POST", at("/audio"), asAdmin, "", ""))
-	sameError(t, "POST voice", on("POST", at(""), asAdmin, "", ""))
-	sameError(t, "duplicate name", create(voicePart{name: "name", value: "narrator voice"}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip}))
+	wantError(t, "audio as reader", on("GET", at("/audio"), asReader, "", ""))
+	wantError(t, "POST audio", on("POST", at("/audio"), asAdmin, "", ""))
+	wantError(t, "POST voice", on("POST", at(""), asAdmin, "", ""))
+	wantError(t, "duplicate name", create(voicePart{name: "name", value: "narrator voice"}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip}))
 
 	// Readers see the voice without its creator.
 	for name, r := range on("GET", at(""), asReader, "", "") {
@@ -230,10 +198,10 @@ func TestDifferentialVoices(t *testing.T) {
 		"extra keys": `{"name":"Ok","b":1,"a":2}`, "extra key": `{"name":"Ok","z":1}`, "reserved": `{"name":"Willow"}`,
 		"blank": `{"name":"   "}`, "too large": `{"name":"` + strings.Repeat("x", 1100) + `"}`,
 	} {
-		sameError(t, "rename "+label, on("PATCH", at(""), asAdmin, "application/json", b))
+		wantError(t, "rename "+label, on("PATCH", at(""), asAdmin, "application/json", b))
 	}
-	sameError(t, "rename as reader", on("PATCH", at(""), asReader, "application/json", `{"name":"Other"}`))
-	sameError(t, "rename unknown", admin("PATCH", base+"/voice-000000000000", "application/json", `{"name":"Other"}`))
+	wantError(t, "rename as reader", on("PATCH", at(""), asReader, "application/json", `{"name":"Other"}`))
+	wantError(t, "rename unknown", admin("PATCH", base+"/voice-000000000000", "application/json", `{"name":"Other"}`))
 	for name, r := range on("PATCH", at(""), asAdmin, "application/json", `{"name":"Storyteller"}`) {
 		if v := r.JSON(t); r.Status != 200 || v["name"] != "Storyteller" || v["sha256"] != want["sha256"] {
 			t.Errorf("%s rename: %d %s", name, r.Status, r.Body)
@@ -241,14 +209,14 @@ func TestDifferentialVoices(t *testing.T) {
 	}
 
 	// The voice is usable on the speech route's checks: a deleted one is not.
-	sameError(t, "delete as reader", on("DELETE", at(""), asReader, "", ""))
+	wantError(t, "delete as reader", on("DELETE", at(""), asReader, "", ""))
 	for name, r := range on("DELETE", at(""), asAdmin, "", "") {
 		if v := r.JSON(t); r.Status != 200 || v["deleted"] != true || v["object"] != "localbase.voice" || v["id"] == nil {
 			t.Errorf("%s delete: %d %s", name, r.Status, r.Body)
 		}
 	}
-	sameError(t, "get deleted", on("GET", at(""), asAdmin, "", ""))
-	sameError(t, "speech with a deleted voice", run(func(tg *harness.Target) call {
+	wantError(t, "get deleted", on("GET", at(""), asAdmin, "", ""))
+	wantError(t, "speech with a deleted voice", run(func(tg *harness.Target) call {
 		return call{"POST", "/v1/audio/speech", tg.Key, "application/json",
 			`{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"hi","voice":"` + ids[tg.Name] + `"}`}
 	}))
@@ -257,17 +225,4 @@ func TestDifferentialVoices(t *testing.T) {
 func mustJSON(t *testing.T, s string) map[string]any {
 	t.Helper()
 	return (&harness.Resp{Body: []byte(s)}).JSON(t)
-}
-
-// The two gateways' sentences differ only in what they advise.
-func TestModelTooLargeFacts(t *testing.T) {
-	const facts = "This model requires about 4.3 GiB of memory, but only 0.0 GiB is available for models on this host (7.0 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running."
-	ts := facts + " Use a smaller quantization or a smaller model."
-	goSide := facts + " Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer."
-	if modelTooLargeFacts(ts) != modelTooLargeFacts(goSide) || modelTooLargeFacts(ts) != any(facts) {
-		t.Errorf("%q and %q", modelTooLargeFacts(ts), modelTooLargeFacts(goSide))
-	}
-	if modelTooLargeFacts(facts+" Use a smaller model.") == modelTooLargeFacts("Another fact entirely. Use a smaller model.") {
-		t.Error("different facts compare equal")
-	}
 }

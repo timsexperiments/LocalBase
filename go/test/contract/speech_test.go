@@ -14,9 +14,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestDifferentialSpeechRejections sends invalid speech requests to both
-// gateways and requires the same status, type, code, param and message.
-// None of them reaches a backend.
+// TestDifferentialSpeechRejections sends invalid speech requests and requires an error envelope for
+// each; none of them reaches a backend. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialSpeechRejections(t *testing.T) {
 	long := strings.Repeat("a", 257)
 	cases := []struct{ name, body string }{
@@ -67,8 +66,8 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 	}
 }
 
-// TestSpeechQwenReal runs Qwen3-TTS through tts-server on both gateways: a
-// reference voice, then a custom voice cloned from an uploaded recording.
+// TestSpeechQwenReal runs Qwen3-TTS through tts-server: a reference voice, then a custom voice
+// cloned from an uploaded recording.
 func TestSpeechQwenReal(t *testing.T) {
 	d := os.Getenv("LOCALBASE_CONTRACT_TTS_MODELS")
 	if d == "" || os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
@@ -120,11 +119,6 @@ func TestSpeechQwenReal(t *testing.T) {
 				}
 			}
 		}
-	}
-	if len(harness.Targets(t)) == 2 {
-		a, b := outputs["ts"], outputs["go"]
-		t.Logf("reference voice identical: %v (%d vs %d bytes); custom voice identical: %v (%d vs %d bytes)",
-			bytes.Equal(a[0], b[0]), len(a[0]), len(b[0]), bytes.Equal(a[1], b[1]), len(a[1]), len(b[1]))
 	}
 }
 
