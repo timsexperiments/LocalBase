@@ -20,7 +20,7 @@ func TestCLIAccessRecovery(t *testing.T) {
 	const warning = "Warning: nobody can manage access now"
 	run := func(wantWarning bool, args ...string) {
 		t.Helper()
-		r := runCLI(t, "go", root, args...)
+		r := runCLI(t, root, args...)
 		if r.code != 0 {
 			t.Fatalf("%v: exit %d %s%s", args, r.code, r.stdout, r.stderr)
 		}
@@ -38,7 +38,7 @@ func TestCLIAccessRecovery(t *testing.T) {
 	run(false, "--json", "access", "users", "enable", "--email", "owner@example.com")
 	// A key with access:manage is a manager too; revoking it while the owner
 	// still manages is quiet.
-	k := runCLI(t, "go", root, "--json", "keys", "create", "--name", "ops", "--scopes", "access:manage")
+	k := runCLI(t, root, "--json", "keys", "create", "--name", "ops", "--scopes", "access:manage")
 	m := regexp.MustCompile(`id=(key_[0-9a-f-]+)`).FindStringSubmatch(k.stderr)
 	if m == nil {
 		t.Fatalf("keys create: %s%s", k.stdout, k.stderr)

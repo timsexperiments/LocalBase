@@ -96,7 +96,7 @@ func TestCLIAccess(t *testing.T) {
 		runCase(t, gr, args...)
 	}
 	// No provider and no policy are left: clearing succeeds and clears nothing (TS refused it).
-	if goRes := runCLI(t, "go", gr, "--json", "access", "policy", "clear"); goRes.code != 0 || !strings.Contains(goRes.stdout, `"cleared":false`) {
+	if goRes := runCLI(t, gr, "--json", "access", "policy", "clear"); goRes.code != 0 || !strings.Contains(goRes.stdout, `"cleared":false`) {
 		t.Errorf("go policy clear with no provider: want exit 0 and cleared false, got %d %s%s", goRes.code, goRes.stdout, goRes.stderr)
 	}
 }

@@ -36,10 +36,10 @@ func TestCLIVoices(t *testing.T) {
 		runCase(t, gr, args...)
 	}
 	// Human output and removal of the voice.
-	r := runCLI(t, "go", gr, "--json", "voices", "list")
+	r := runCLI(t, gr, "--json", "voices", "list")
 	id := normalizeID(t, r.stdout)
 	runCase(t, gr, "voices", "list")
-	if rm := runCLI(t, "go", gr, "--json", "voices", "remove", id); rm.code != 0 {
+	if rm := runCLI(t, gr, "--json", "voices", "remove", id); rm.code != 0 {
 		t.Errorf("remove: %s %s", rm.stdout, rm.stderr)
 	}
 	if _, err := os.Stat(filepath.Join(gr, "voices", id+".wav")); !os.IsNotExist(err) {

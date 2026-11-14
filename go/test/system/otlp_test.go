@@ -106,18 +106,18 @@ const otlpSecret = "otlpHeaderSecret55"
 
 // runOTLP launches a gateway exporting to a local collector, sends the
 // scripted requests, and stops it (the final flush).
-func runOTLP(t *testing.T, impl string, status int, opts ...harness.Option) *otlpRun {
+func runOTLP(t *testing.T, status int, opts ...harness.Option) *otlpRun {
 	t.Helper()
 	col := &collector{status: status}
 	srv := rangeServer(t, col, false)
-	run := runOTLPAt(t, impl, srv.URL+"/base", opts...)
+	run := runOTLPAt(t, srv.URL+"/base", opts...)
 	run.col = col
 	return run
 }
 
 // runOTLPAt runs the scripted requests against a gateway exporting to
 // endpoint; the caller fills in what was received.
-func runOTLPAt(t *testing.T, impl, endpoint string, opts ...harness.Option) *otlpRun {
+func runOTLPAt(t *testing.T, endpoint string, opts ...harness.Option) *otlpRun {
 	t.Helper()
 	tg, err := harness.Launch(append([]harness.Option{harness.Env([]string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
 		"OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret})}, opts...)...)
@@ -210,7 +210,7 @@ func localEvents(t *testing.T, root string) map[string]map[string]any {
 
 // checkRecords: every exported record is a local event, with the TS
 // attribute mapping and the event's own trace correlation.
-func (r *otlpRun) checkRecords(t *testing.T, impl string) map[string]map[string]any {
+func (r *otlpRun) checkRecords(t *testing.T) map[string]map[string]any {
 	t.Helper()
 	events := localEvents(t, r.root)
 	byRequest := map[string]map[string]any{} // eventName|request id → record
@@ -219,30 +219,30 @@ func (r *otlpRun) checkRecords(t *testing.T, impl string) map[string]map[string]
 		id, _ := attrs["localbase.event_id"].(string)
 		e := events[id]
 		if e == nil {
-			t.Errorf("%s: exported record %v is not in the local log", impl, attrs["event.name"])
+			t.Errorf("exported record %v is not in the local log", attrs["event.name"])
 			continue
 		}
 		if attrs["event.name"] != e["eventName"] || attrs["event.category"] != e["category"] || attrs["localbase.component"] != e["component"] ||
 			attrs["localbase.runtime"] != e["runtime"] || bodyText(rec["body"]) != e["message"] ||
 			rec["severityText"] != strings.ToUpper(e["severity"].(string)) {
-			t.Errorf("%s: record %v does not match event %v", impl, attrs, e)
+			t.Errorf("record %v does not match event %v", attrs, e)
 		}
 		if ea, ok := e["attributes"].(map[string]any); ok {
 			for k, v := range ea {
 				if fmt.Sprint(otlpPlain(attrs[k])) != fmt.Sprint(v) {
-					t.Errorf("%s: %s attribute %s = %v, event has %v", impl, e["eventName"], k, attrs[k], v)
+					t.Errorf("%s attribute %s = %v, event has %v", e["eventName"], k, attrs[k], v)
 				}
 			}
 		}
 		if tr, ok := e["trace"].(map[string]any); ok {
 			if rec["traceId"] != tr["traceId"] || rec["spanId"] != tr["spanId"] || rec["flags"] != 1.0 {
-				t.Errorf("%s: %s record trace %v/%v, event %v", impl, e["eventName"], rec["traceId"], rec["spanId"], tr)
+				t.Errorf("%s record trace %v/%v, event %v", e["eventName"], rec["traceId"], rec["spanId"], tr)
 			}
 		} else if rec["traceId"] != nil {
-			t.Errorf("%s: %s record has a trace the event lacks", impl, e["eventName"])
+			t.Errorf("%s record has a trace the event lacks", e["eventName"])
 		}
 		if strings.HasPrefix(fmt.Sprint(e["eventName"]), "observability.export") {
-			t.Errorf("%s: an exporter diagnostic was exported", impl)
+			t.Error("an exporter diagnostic was exported")
 		}
 		if rid, ok := e["requestId"].(string); ok {
 			byRequest[e["eventName"].(string)+"|"+rid] = rec
@@ -262,8 +262,8 @@ func otlpPlain(v any) any {
 // their spans, for each request; exporter headers are sent and never logged. The trees and records
 // are pinned (they were compared with TS's until step 7).
 func TestDifferentialOTLP(t *testing.T) {
-	run := runOTLP(t, "go", 0, pinnedFixture(t)...)
-	records := run.checkRecords(t, "go")
+	run := runOTLP(t, 0, pinnedFixture(t)...)
+	records := run.checkRecords(t)
 	run.col.mu.Lock()
 	for _, h := range run.col.headers {
 		if h.Get("X-Auth") != otlpSecret || h.Get("Content-Type") != "application/x-protobuf" {
@@ -309,7 +309,7 @@ func TestDifferentialOTLP(t *testing.T) {
 // TestDifferentialOTLPFailures: a failing collector is reported once in the local log, and never
 // exported. The reports are pinned (they were compared with TS's until step 7).
 func TestDifferentialOTLPFailures(t *testing.T) {
-	run := runOTLP(t, "go", 500, pinnedFixture(t)...)
+	run := runOTLP(t, 500, pinnedFixture(t)...)
 	var got []map[string]any
 	for _, e := range localEvents(t, run.root) {
 		if strings.HasPrefix(fmt.Sprint(e["eventName"]), "observability.export") {
@@ -351,7 +351,7 @@ func TestCLIOtelEnvironment(t *testing.T) {
 	}
 	for _, env := range envs {
 		for _, args := range [][]string{{"--json", "doctor"}, {"--json", "configure", "--defaults", "--no-create-key"}} {
-			if r := runCLIEnv(t, "go", gr, env, args...); strings.Contains(r.stdout+r.stderr, otlpSecret) {
+			if r := runCLIEnv(t, gr, env, args...); strings.Contains(r.stdout+r.stderr, otlpSecret) {
 				t.Errorf("%v %v: an exporter header was printed", env, args)
 			}
 		}

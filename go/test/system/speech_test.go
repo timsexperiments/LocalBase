@@ -100,10 +100,10 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 	if !marked(wav) {
 		t.Error("default output carries no AI-content watermark")
 	}
-	if r := runCLI(t, "go", tg.Root, "--json", "speech", "marking", "off"); r.code != 0 {
+	if r := runCLI(t, tg.Root, "--json", "speech", "marking", "off"); r.code != 0 {
 		t.Fatalf("speech marking off: %s %s", r.stdout, r.stderr)
 	}
-	defer runCLI(t, "go", tg.Root, "speech", "marking", "on")
+	defer runCLI(t, tg.Root, "speech", "marking", "on")
 	if r := speak(""); r.Status != 200 || marked(r.Body) {
 		t.Errorf("marking off: %d, still marked %v", r.Status, r.Status == 200)
 	}

@@ -179,7 +179,7 @@ func TestRealCollector(t *testing.T) {
 		t.Skip("set LOCALBASE_CONTRACT_OTELCOL to a pinned otelcol binary")
 	}
 	endpoint, out, stop := startOtelcol(t, bin)
-	run := runOTLPAt(t, "go", endpoint)
+	run := runOTLPAt(t, endpoint)
 	time.Sleep(1500 * time.Millisecond) // the file exporter's flush
 	stop()
 	run.col = readCollectorFile(t, out)
@@ -196,5 +196,5 @@ func TestRealCollector(t *testing.T) {
 			t.Errorf("%s: no server span as the collector parsed it", label)
 		}
 	}
-	run.checkRecords(t, "go")
+	run.checkRecords(t)
 }
