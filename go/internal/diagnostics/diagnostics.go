@@ -136,12 +136,13 @@ type Bundle struct {
 
 // Collect gathers a bundle for the root dir. A read that fails doesn't stop it: the manifest says what
 // it went without. svc is the command's own service Manager: the bundle reads the service through it
-// and never makes another.
-func Collect(ctx context.Context, dir string, svc service.Manager) *Bundle {
+// and never makes another. host is the command's memory: the models' fit is judged against its
+// capacity, as every other command judges it; the hardware section describes the machine itself.
+func Collect(ctx context.Context, dir string, svc service.Manager, host memory.HostProvider) *Bundle {
 	generatedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 
 	specs := memory.DetectSpecs()
-	systemGB := specs.GPUVramGB
+	systemGB := int(float64(host.Topology().SystemCapacity)/float64(memory.GiB) + 0.5)
 	hardware := available(object("os", specs.OSName, "arch", nodeArch(), "cpu", specs.CPUModel, "gpu", specs.GPUName,
 		"memoryGb", float64(specs.RAMGB), "vramGb", float64(specs.GPUVramGB)))
 
