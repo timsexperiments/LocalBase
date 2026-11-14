@@ -368,6 +368,7 @@ func Run(opts Options, open Opener, rep Reporter) error {
 		auth.NameBindingIssuers(context.Background(), st, access, log)
 	}
 	browser := auth.NewBrowser(st, r.Dir, access, log)
+	browser.Stylesheet = web.StylesheetURL() // its sign-in pages link the app's style sheet
 	if browser.HasMagicLink() == nil {
 		if err := auth.ClearMagicLinks(context.Background(), st); err != nil {
 			log.Warn("Could not clear pending magic links.", "event", "auth.magic-links-clear-failed", "error", err.Error())

@@ -92,13 +92,27 @@ type UI struct {
 	previews  map[string][]byte // voice samples, by model and voice
 }
 
+// assetVersion is an embedded asset's version in its URL: the start of a hash of its content, so a
+// release that changes the file changes its URL.
+func assetVersion(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:6])
+}
+
+// StylesheetURL is the app's style sheet with its version: the link every page of the UI uses, and
+// the one auth's sign-in pages use through Browser.Stylesheet. It's a fact of the embedded files, the
+// same for every UI.
+func StylesheetURL() string {
+	b, _ := staticFS.ReadFile("static/app.css")
+	return "/app/assets/app.css?v=" + assetVersion(b)
+}
+
 func New(d Deps) *UI {
 	u := &UI{d: d, assetVer: map[string]string{}}
 	fs.WalkDir(staticFS, "static", func(p string, e fs.DirEntry, err error) error {
 		if err == nil && !e.IsDir() {
 			b, _ := staticFS.ReadFile(p)
-			sum := sha256.Sum256(b)
-			u.assetVer[strings.TrimPrefix(p, "static/")] = hex.EncodeToString(sum[:6])
+			u.assetVer[strings.TrimPrefix(p, "static/")] = assetVersion(b)
 		}
 		return nil
 	})
@@ -150,7 +164,6 @@ func New(d Deps) *UI {
 	}
 	u.localSignIn = template.Must(template.New("localsignin.html").Funcs(funcs).ParseFS(templateFS, "templates/localsignin.html"))
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
-	auth.Stylesheet = "/app/assets/app.css?v=" + u.assetVer["app.css"]
 	u.pages = map[string]*template.Template{}
 	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin", "welcome", "notfound", "noaccess", "connect", "usage"} {
 		t := template.Must(base.Clone())

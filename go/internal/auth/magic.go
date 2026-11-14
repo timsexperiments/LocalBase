@@ -40,7 +40,7 @@ func readForm(r *http.Request, max int64, field string) (string, bool) {
 // whether or not the address can sign in.
 func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliver func(to, link string) error) {
 	done := func() {
-		page(w, `<h1 class="welcome-title">Check your email</h1><p class="mt-3 text-muted">If that address can sign in, a link is on its way. It works once, for 15 minutes, and asking again before then doesn’t send another.</p>`, formCSP, "same-origin")
+		b.page(w, `<h1 class="welcome-title">Check your email</h1><p class="mt-3 text-muted">If that address can sign in, a link is on its way. It works once, for 15 minutes, and asking again before then doesn’t send another.</p>`, formCSP, "same-origin")
 	}
 	reg := b.HasMagicLink()
 	if reg == nil || r.URL.Query().Get("provider") != reg.ID || !formOK(r, b.Config.Origin) {
@@ -105,7 +105,7 @@ func (b *Browser) MagicLinkPage(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	fmt.Fprintf(w, pageOpen()+`<h1 class="welcome-title">Sign in to LocalBase</h1><p class="mt-3 text-muted">Continue to use this one-time sign-in link.</p><form method="post" action="%s" class="mt-5"><input name="token" type="hidden"><button class="btn btn-primary w-full" type="submit">Sign in</button></form></main><script>%s</script></html>`,
+	fmt.Fprintf(w, b.pageOpen()+`<h1 class="welcome-title">Sign in to LocalBase</h1><p class="mt-3 text-muted">Continue to use this one-time sign-in link.</p><form method="post" action="%s" class="mt-5"><input name="token" type="hidden"><button class="btn btn-primary w-full" type="submit">Sign in</button></form></main><script>%s</script></html>`,
 		MagicCallbackPath, redeemScript)
 }
 
