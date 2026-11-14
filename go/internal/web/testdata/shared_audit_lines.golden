@@ -1,0 +1,2 @@
+{"attributes":{"action":"set","actor_id":"browser:someone","actor_kind":"browser-session","backend_id":"llama.cpp-cpu","event":"audit.model-backend-changed","target_id":"qwen3.6-35b-a3b-iq4_nl_xl","target_kind":"model"},"message":"Administration change."}
+{"attributes":{"action":"reset","actor_id":"browser:someone","actor_kind":"browser-session","backend_id":"","event":"audit.model-backend-changed","target_id":"qwen3.6-35b-a3b-iq4_nl_xl","target_kind":"model"},"message":"Administration change."}
