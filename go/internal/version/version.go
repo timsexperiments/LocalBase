@@ -76,6 +76,10 @@ func (b Build) String() string {
 
 // ReleaseBuild: a release stamps its commit. A plain go build does not, and neither does a build
 // from a checkout with uncommitted changes.
-func ReleaseBuild() bool {
-	return Commit != "" && !Get().Modified
+func ReleaseBuild() bool { return releaseBuild(Commit, fromVCS()) }
+
+// releaseBuild is ReleaseBuild for a stamped commit and version control's stamp. Commit is an
+// -ldflags -X target that Go code never assigns: a test passes its commit here instead.
+func releaseBuild(commit string, vcs map[string]string) bool {
+	return commit != "" && !resolve(Version, commit, Date, runtime.Version(), vcs).Modified
 }
