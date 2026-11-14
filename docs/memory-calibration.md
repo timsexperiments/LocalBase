@@ -1,6 +1,6 @@
 # Memory calibration
 
-LocalBase admits a runtime only when its memory demand fits the pool. Demand comes from a formula estimate (`go/internal/memory/estimate.go`). When a model has been measured at its exact launch shape, the measured record replaces the estimate and the demand carries confidence `measured`. A matching feed peak (`feed`) or a peak observed on this machine (`observed`) can also replace it; see [Admission](#admission). Records live in [`src/domains/runtime/memory-measurements.ts`](../src/domains/runtime/memory-measurements.ts).
+LocalBase admits a runtime only when its memory demand fits the pool. Demand comes from a formula estimate (`go/internal/memory/estimate.go`). When a model has been measured at its exact launch shape, the measured record replaces the estimate and the demand carries confidence `measured`. A matching feed peak (`feed`) or a peak observed on this machine (`observed`) can also replace it; see [Admission](#admission). Records live in [`go/internal/memory/measurements.json`](../go/internal/memory/measurements.json).
 
 Measured demand is still an admission reservation, not a hard limit. Pool reserves, pressure monitoring and emergency eviction remain active.
 
@@ -185,5 +185,5 @@ Entries that left the built-in catalog (`go/internal/catalog/data/former/`) keep
 
 1. Run the model through a scratch LocalBase root at the shape the gateway launches. For LLMs, that is the reference shape above.
 2. Record the backend's GPU and CPU buffer reports from its log. Sample the backend process RSS every 250 ms through a real workload. For offloaded video, also sample free plus inactive system memory.
-3. Add a record to `MEMORY_MEASUREMENTS` with the model id, variant, shape, bytes, date, hardware and method.
-4. Run `bun test ./src/catalog.test.ts`. The computed minimum follows the record.
+3. Add a record to `go/internal/memory/measurements.json` with the model id, variant, shape, bytes, date, hardware and method.
+4. From `go/`, run `go test ./internal/memory/... ./internal/runtime/...`; the computed minimum follows the record. Then run `go run ./tools/catalog-feed`, since the published feed's memory peaks come from these records.
