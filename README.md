@@ -111,7 +111,7 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). New work goes in [`go/`](go/); [`src/`](src/README.md) is the legacy TypeScript version. To report a vulnerability, see [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). The code is in [`go/`](go/); the TypeScript version is retired, and its 0.1.0 release stays the rollback. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 

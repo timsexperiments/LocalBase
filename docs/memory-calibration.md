@@ -1,6 +1,6 @@
 # Memory calibration
 
-LocalBase admits a runtime only when its memory demand fits the pool. Demand comes from a formula estimate (`src/domains/runtime/memory-estimate.ts`). When a model has been measured at its exact launch shape, the measured record replaces the estimate and the demand carries confidence `measured`. A matching feed peak (`feed`) or a peak observed on this machine (`observed`) can also replace it; see [Admission](#admission). Records live in [`src/domains/runtime/memory-measurements.ts`](../src/domains/runtime/memory-measurements.ts).
+LocalBase admits a runtime only when its memory demand fits the pool. Demand comes from a formula estimate (`go/internal/memory/estimate.go`). When a model has been measured at its exact launch shape, the measured record replaces the estimate and the demand carries confidence `measured`. A matching feed peak (`feed`) or a peak observed on this machine (`observed`) can also replace it; see [Admission](#admission). Records live in [`src/domains/runtime/memory-measurements.ts`](../src/domains/runtime/memory-measurements.ts).
 
 Measured demand is still an admission reservation, not a hard limit. Pool reserves, pressure monitoring and emergency eviction remain active.
 
@@ -41,7 +41,7 @@ For a locally installed LLM whose file is larger than the catalog artifact, the 
 
 ## Minimum memory and fit
 
-The catalog no longer stores a hand-entered `minVramGb`. Each model's minimum is computed in `src/domains/models/memory-fit.ts`: the accelerator demand of its memory figure plus a margin of max(512 MiB, 10%), rounded up to whole GiB (`minimumMemoryGb`). The figure comes from, most trusted first:
+The catalog no longer stores a hand-entered `minVramGb`. Each model's minimum is computed in `go/internal/runtime/fit.go`: the accelerator demand of its memory figure plus a margin of max(512 MiB, 10%), rounded up to whole GiB (`minimumMemoryGb`). The figure comes from, most trusted first:
 
 1. **observed**: the peak this machine recorded while serving the model (below).
 2. **measured**: a record in `MEMORY_MEASUREMENTS` at the reference shape.
@@ -59,7 +59,7 @@ Entries without checked-in measurements (user and discovered entries) can use a 
 
 ## Admission
 
-Launch admission uses the same order as the fit figure, applied to the planned launch (`src/domains/runtime/admission-demand.ts`):
+Launch admission uses the same order as the fit figure, applied to the planned launch (`go/internal/runtime/llm_backend.go` and `plan.go`):
 
 1. **observed**: a macOS `footprint` peak recorded on this machine for the same artifact sha256 and the exact planned launch shape. The demand is the peak plus max(512 MiB, 10%), the same margin as `minimumMemoryGb`, used for unified, host and accelerator alike. Runtime always wins, so an observed peak replaces every other figure, larger or smaller. Unlike the fit figure, admission does not fall back to a peak from another shape. A different context, slot count or KV type plans from the sources below.
 2. **measured**: a checked-in record at the planned shape.
@@ -179,7 +179,7 @@ Built-in entries without a measured record keep estimate confidence:
 
 ## Former built-in entries
 
-Entries that left the built-in catalog (`src/catalog/former/`) keep their records here. An install that kept one as a user entry (see the README's built-in catalog section) still plans from its record while the entry's files and launch shape match what was measured (`usesReferenceMeasurements`). Their unmeasured profiles, such as flux2-klein-9b-q4_0 with `--diffusion-fa`, the catalog-only video profiles and the q8_0 LLM variants, keep their estimates.
+Entries that left the built-in catalog (`go/internal/catalog/data/former/`) keep their records here. An install that kept one as a user entry (see the README's built-in catalog section) still plans from its record while the entry's files and launch shape match what was measured (`usesReferenceMeasurements`). Their unmeasured profiles, such as flux2-klein-9b-q4_0 with `--diffusion-fa`, the catalog-only video profiles and the q8_0 LLM variants, keep their estimates.
 
 ## Adding a measurement
 
