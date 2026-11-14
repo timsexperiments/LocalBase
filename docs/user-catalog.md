@@ -118,8 +118,9 @@ except through `models feed refresh`.
 
 To publish your own feed, use the same document shape. Contributors
 regenerate both repository feeds, with annotations built from the catalog
-and the checked-in memory measurements, after editing `src/catalog/models/`
-with `bun run catalog:feed`; a test fails while either is out of date.
+and the checked-in memory measurements, after editing
+`go/internal/catalog/data/` with `cd go && go run ./tools/catalog-feed`; a test
+fails while either is out of date.
 
 ## Same-id semantics: add or patch
 

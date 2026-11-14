@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -46,6 +47,10 @@ var Measurements = func() []Measurement {
 	}
 	return m
 }()
+
+// MeasurementsJSON is a copy of the embedded measurements.json, which the
+// catalog feed generator reads for the feed's memory peaks.
+func MeasurementsJSON() []byte { return bytes.Clone(measurementsJSON) }
 
 // byModel is the first record of this kind for the model, as TS finds it.
 func byModel(kind, id string) *Measurement {

@@ -1,10 +1,8 @@
 package catalog
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -22,18 +20,6 @@ func TestBuiltInCatalogDecodesStrictly(t *testing.T) {
 	}
 	if c.ByID("qwen3-embedding-0.6b-q8_0") == nil || !c.ByID("qwen3-embedding-0.6b-q8_0").IsEmbedding() {
 		t.Fatal("embedding model not recognized")
-	}
-}
-
-// The embedded copy must match src/catalog/models until TS retires.
-func TestBuiltInCatalogMatchesSource(t *testing.T) {
-	order, _ := builtInFS.ReadFile("data/order.txt")
-	for _, rel := range strings.Fields(string(order)) {
-		embedded, _ := builtInFS.ReadFile("data/" + rel)
-		src, err := os.ReadFile(filepath.Join("..", "..", "..", "src", "catalog", "models", rel))
-		if err != nil || !bytes.Equal(src, embedded) {
-			t.Errorf("%s is out of date; run go generate ./internal/catalog", rel)
-		}
 	}
 }
 

@@ -135,7 +135,6 @@ var knownToDelete = map[string]int{
 	"scripts/placement-rollback-check.sh":  1,
 	"tools/rehearsal.sh":                   1,
 	"tools/shadow.sh":                      4,
-	"scripts/sync-catalog.sh":              1,
 	"test/platform/systemd-check.sh":       1,
 	"scripts/tailwind.sh":                  1,
 	"scripts/upgrade-rehearsal-systemd.sh": 1,
