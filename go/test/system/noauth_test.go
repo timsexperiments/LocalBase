@@ -19,7 +19,7 @@ import (
 // A Go-only rule: TS 0.1.0 has no such check.
 func TestNoAuthOnlyOnLoopback(t *testing.T) {
 	root := filepath.Join(fsguard.ScratchDir(t), "root")
-	if res := runCLI(t, "go", root, "--json", "init"); res.code != 0 {
+	if res := runCLI(t, root, "--json", "init"); res.code != 0 {
 		t.Fatalf("init: %s", res.stderr)
 	}
 	args := func(host string, port int) []string {

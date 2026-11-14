@@ -24,10 +24,10 @@ func TestASecretOnTheCommandLineGetsAWarning(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			root := filepath.Join(fsguard.ScratchDir(t), "root")
-			if r := runCLI(t, "go", root, "--json", "init"); r.code != 0 {
+			if r := runCLI(t, root, "--json", "init"); r.code != 0 {
 				t.Fatalf("init: %s %s", r.stdout, r.stderr)
 			}
-			r := runCLI(t, "go", root, append([]string{"--json", "configure", "--defaults", "--no-create-key"}, c.args...)...)
+			r := runCLI(t, root, append([]string{"--json", "configure", "--defaults", "--no-create-key"}, c.args...)...)
 			if r.code != 0 {
 				t.Fatalf("configure: %d %s %s", r.code, r.stdout, r.stderr)
 			}

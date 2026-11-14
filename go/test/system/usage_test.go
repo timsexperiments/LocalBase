@@ -46,7 +46,7 @@ func plantUsage(t *testing.T, rootDir string, events ...usage.Event) {
 
 func usageJSON(t *testing.T, rootDir string, args ...string) usage.Report {
 	t.Helper()
-	res := runCLI(t, "go", rootDir, append([]string{"--json", "usage"}, args...)...)
+	res := runCLI(t, rootDir, append([]string{"--json", "usage"}, args...)...)
 	if res.code != 0 {
 		t.Fatalf("usage %v: %d %s", args, res.code, res.stderr)
 	}
@@ -62,7 +62,7 @@ func usageJSON(t *testing.T, rootDir string, args ...string) usage.Report {
 func newUsageRoot(t *testing.T) string {
 	t.Helper()
 	rootDir := filepath.Join(fsguard.ScratchDir(t), "root")
-	if res := runCLI(t, "go", rootDir, "--json", "init"); res.code != 0 {
+	if res := runCLI(t, rootDir, "--json", "init"); res.code != 0 {
 		t.Fatalf("init: %s", res.stderr)
 	}
 	return rootDir
@@ -71,7 +71,7 @@ func newUsageRoot(t *testing.T) string {
 // `local-base usage` with no gateway: it reads and writes the database (DESIGN §32.7).
 func TestCLIUsage(t *testing.T) {
 	rootDir := newUsageRoot(t)
-	empty := runCLI(t, "go", rootDir, "usage")
+	empty := runCLI(t, rootDir, "usage")
 	if empty.code != 0 || !strings.Contains(empty.stdout, "No requests") || !strings.Contains(empty.stdout, "never prompts or replies") {
 		t.Errorf("empty: %d\n%s\n%s", empty.code, empty.stdout, empty.stderr)
 	}
@@ -91,7 +91,7 @@ func TestCLIUsage(t *testing.T) {
 	if one := usageJSON(t, rootDir, "--route", "chat"); one.Totals.Requests != 2 {
 		t.Errorf("--route: %+v", one.Totals)
 	}
-	table := runCLI(t, "go", rootDir, "usage", "--by", "key")
+	table := runCLI(t, rootDir, "usage", "--by", "key")
 	for _, want := range []string{"3 requests", "key_a", "WHO", "Recording is on", "kept for 30 days"} {
 		if !strings.Contains(table.stdout, want) {
 			t.Errorf("missing %q:\n%s", want, table.stdout)
@@ -108,7 +108,7 @@ func TestCLIUsage(t *testing.T) {
 		"not a number":    {"usage", "retention", "a"},
 		"not on or off":   {"usage", "recording", "maybe"},
 	} {
-		if res := runCLI(t, "go", rootDir, args...); res.code != 2 {
+		if res := runCLI(t, rootDir, args...); res.code != 2 {
 			t.Errorf("%s: exit %d: %s", name, res.code, res.stderr)
 		}
 	}
@@ -116,7 +116,7 @@ func TestCLIUsage(t *testing.T) {
 		t.Errorf("clear without --yes removed something: %+v", keep.Totals)
 	}
 	for _, args := range [][]string{{"usage", "retention", "7"}, {"usage", "recording", "off"}} {
-		res := runCLI(t, "go", rootDir, append([]string{"--json"}, args...)...)
+		res := runCLI(t, rootDir, append([]string{"--json"}, args...)...)
 		if res.code != 0 || !strings.Contains(res.stdout, `"via":"database"`) {
 			t.Errorf("%v: %d %s %s", args, res.code, res.stdout, res.stderr)
 		}
@@ -124,7 +124,7 @@ func TestCLIUsage(t *testing.T) {
 	if got := usageJSON(t, rootDir); got.RetentionDays != 7 || got.Recording {
 		t.Errorf("settings: %+v", got)
 	}
-	if res := runCLI(t, "go", rootDir, "--json", "usage", "clear", "--yes"); res.code != 0 {
+	if res := runCLI(t, rootDir, "--json", "usage", "clear", "--yes"); res.code != 0 {
 		t.Errorf("clear: %d %s", res.code, res.stderr)
 	}
 	if got := usageJSON(t, rootDir); got.Totals.Requests != 0 {
@@ -149,7 +149,7 @@ func TestCLIUsageNoIdentity(t *testing.T) {
 	st.Close()
 	plantUsage(t, rootDir, usage.Event{Kind: "browser", Principal: owner, Route: "chat", Status: 200, At: time.Now()})
 	for _, args := range [][]string{{"usage"}, {"usage", "--by", "key"}, {"--json", "usage", "--by", "key"}, {"--json", "usage", "--by", "key", "--by", "model", "--by", "route"}} {
-		res := runCLI(t, "go", rootDir, args...)
+		res := runCLI(t, rootDir, args...)
 		if res.code != 0 {
 			t.Fatalf("%v: %d %s", args, res.code, res.stderr)
 		}
@@ -215,7 +215,7 @@ func TestCLIUsageRefusesWithoutTheGateway(t *testing.T) {
 		n, _ := strconv.Atoi(p)
 		writeOwner(t, rootDir, os.Getpid(), "127.0.0.1", n)
 		for _, w := range writes {
-			res := runCLI(t, "go", rootDir, w...)
+			res := runCLI(t, rootDir, w...)
 			if res.code != 1 || !strings.Contains(res.stdout+res.stderr, "Nothing changed") {
 				t.Errorf("%v: %d %s %s", w, res.code, res.stdout, res.stderr)
 			}
@@ -231,7 +231,7 @@ func TestCLIUsageRefusesWithoutTheGateway(t *testing.T) {
 		n, _ := strconv.Atoi(u.Port())
 		writeOwner(t, rootDir, os.Getpid(), "127.0.0.1", n)
 		for _, w := range writes {
-			res := runCLI(t, "go", rootDir, w...)
+			res := runCLI(t, rootDir, w...)
 			if res.code != 1 || !strings.Contains(res.stdout+res.stderr, "Nothing changed") {
 				t.Errorf("%v: %d %s %s", w, res.code, res.stdout, res.stderr)
 			}
@@ -249,7 +249,7 @@ func TestCLIUsageRefusesWithoutTheGateway(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, w := range writes {
-			res := runCLI(t, "go", rootDir, w...)
+			res := runCLI(t, rootDir, w...)
 			if res.code != 1 || !strings.Contains(res.stdout+res.stderr, "Nothing changed") {
 				t.Errorf("%v: %d %s %s", w, res.code, res.stdout, res.stderr)
 			}
@@ -264,7 +264,7 @@ func TestCLIUsageRefusesWithoutTheGateway(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeOwner(t, rootDir, dead.Process.Pid, "127.0.0.1", 1)
-		res := runCLI(t, "go", rootDir, "--json", "usage", "clear", "--yes")
+		res := runCLI(t, rootDir, "--json", "usage", "clear", "--yes")
 		if res.code != 0 || !strings.Contains(res.stdout, `"via":"database"`) {
 			t.Errorf("%d %s %s", res.code, res.stdout, res.stderr)
 		}
@@ -328,21 +328,21 @@ func TestCLIUsageGoesThroughGateway(t *testing.T) {
 		t.Fatal("the request was never counted")
 	}
 	// In memory only, right now: a direct database write could not reach it.
-	res := runCLI(t, "go", target.Root, "--json", "usage", "clear", "--yes")
+	res := runCLI(t, target.Root, "--json", "usage", "clear", "--yes")
 	if res.code != 0 || !strings.Contains(res.stdout, `"via":"gateway"`) {
 		t.Fatalf("clear: %d %s %s", res.code, res.stdout, res.stderr)
 	}
 	if got := current().Totals.Requests; got != 0 {
 		t.Errorf("after clearing through the gateway: %d, want the counts in memory gone too", got)
 	}
-	res = runCLI(t, "go", target.Root, "--json", "usage", "retention", "7")
+	res = runCLI(t, target.Root, "--json", "usage", "retention", "7")
 	if res.code != 0 || !strings.Contains(res.stdout, `"via":"gateway"`) {
 		t.Fatalf("retention: %d %s %s", res.code, res.stdout, res.stderr)
 	}
 	if got := current().RetentionDays; got != 7 {
 		t.Errorf("retention, as the gateway sees it: %d", got)
 	}
-	res = runCLI(t, "go", target.Root, "--json", "usage", "recording", "off")
+	res = runCLI(t, target.Root, "--json", "usage", "recording", "off")
 	if res.code != 0 || !strings.Contains(res.stdout, `"via":"gateway"`) {
 		t.Fatalf("recording: %d %s %s", res.code, res.stdout, res.stderr)
 	}
@@ -353,7 +353,7 @@ func TestCLIUsageGoesThroughGateway(t *testing.T) {
 	}
 	// Leave the shared gateway as it was.
 	for _, args := range [][]string{{"--json", "usage", "recording", "on"}, {"--json", "usage", "retention", "30"}} {
-		if res := runCLI(t, "go", target.Root, args...); res.code != 0 {
+		if res := runCLI(t, target.Root, args...); res.code != 0 {
 			t.Errorf("%v: %d %s", args, res.code, res.stderr)
 		}
 	}
@@ -374,7 +374,7 @@ func TestUsageOutOfDiagnostics(t *testing.T) {
 	const principal, model = "key_PLANTEDUSAGEPRINCIPAL", "PLANTEDUSAGEMODEL"
 	plantUsage(t, rootDir, usage.Event{Kind: "api-key", Principal: principal, Route: "chat", Model: model, Status: 200, At: time.Now()})
 	out := filepath.Join(fsguard.ScratchDir(t), "bundle.zip")
-	if res := runCLI(t, "go", rootDir, "diagnostics", "--output", out); res.code != 0 {
+	if res := runCLI(t, rootDir, "diagnostics", "--output", out); res.code != 0 {
 		t.Fatalf("diagnostics: %d %s", res.code, res.stderr)
 	}
 	zr, err := zip.OpenReader(out)

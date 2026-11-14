@@ -20,7 +20,7 @@ import (
 // testFeed builds a v2 feed: a community model, an entry for a built-in id
 // (left out), an invalid entry (skipped), and annotations (one invalid).
 // encoding/json writes object keys sorted, which is also how JSON.stringify
-// reads them back, so the checksum is what both implementations compute.
+// reads them back, so the checksum is what the gateway computes.
 func testFeed(t *testing.T) []byte {
 	t.Helper()
 	community := map[string]any{
@@ -45,7 +45,7 @@ func testFeed(t *testing.T) []byte {
 	}
 	annotations := []any{
 		// Built-in models without a checked-in measurement: the feed peak and
-		// mark apply on both gateways.
+		// mark apply.
 		map[string]any{"repo": "ggerganov/whisper.cpp", "revision": "5359861c739e955e79d9a303bcbc70fb988958b1", "file": "ggml-small-q8_0.bin",
 			"modelId": "whisper-small-q8_0", "kind": "stt", "status": "verified", "memoryPeaks": []any{peak("default", 3_100_000_000)},
 			"unsupportedCapabilities": []any{mark("translation")}},
@@ -92,7 +92,7 @@ func TestCLIFeed(t *testing.T) {
 	env := []string{"LOCALBASE_CATALOG_FEED_URL="}
 	compare := func(args ...string) {
 		t.Helper()
-		runCLIEnv(t, "go", gr, env, args...)
+		runCLIEnv(t, gr, env, args...)
 	}
 	feedURL := srv.URL + "/feed.json"
 	compare("--json", "models", "feed", "status")

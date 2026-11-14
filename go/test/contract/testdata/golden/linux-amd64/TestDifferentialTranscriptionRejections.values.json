@@ -1,0 +1,146 @@
+{
+  "error: /v1/audio/transcriptions bad format": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: response_format: Invalid option: expected one of \"json\"|\"text\"|\"srt\"|\"verbose_json\"|\"vtt\"",
+    "param": "response_format",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions bad granularity": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: timestamp_granularities.0: Invalid option: expected one of \"word\"|\"segment\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions blank model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: model must not be empty",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions file as text": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: file: file must be a valid File or Blob object",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions json body": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid form data payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions no file": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: file: file must be a valid File or Blob object",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions temperature high": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: temperature: Too big: expected number to be \u003c=1",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions temperature text": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: temperature: Invalid input: expected number, received NaN",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/transcriptions unknown model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations bad format": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: response_format: Invalid option: expected one of \"json\"|\"text\"|\"srt\"|\"verbose_json\"|\"vtt\"",
+    "param": "response_format",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations bad granularity": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: timestamp_granularities.0: Invalid option: expected one of \"word\"|\"segment\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations blank model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: model must not be empty",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations file as text": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: file: file must be a valid File or Blob object",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations json body": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid form data payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations no file": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: file: file must be a valid File or Blob object",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations temperature high": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: temperature: Too big: expected number to be \u003c=1",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations temperature text": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: temperature: Invalid input: expected number, received NaN",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/audio/translations unknown model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  }
+}

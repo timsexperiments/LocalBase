@@ -1,0 +1,322 @@
+{
+  "error: /v1/chat/completions not json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid JSON payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: model must not be empty",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"assistant\"}]}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: messages.0: assistant messages require content, reasoning, tool_calls, or refusal",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"robot\",\"content\":\"x\"}]}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: messages.0.role: Invalid input: expected \"system\" | \"developer\" | \"user\" | \"assistant\" | \"tool\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"tool\",\"content\":\"x\"}]}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: messages.0.tool_call_id: Too small: expected string to have \u003e=1 characters",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"max_tokens\":0}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: max_tokens: Too small: expected number to be \u003e0",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"bad name\",\"schema\":{}}}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: response_format.json_schema.name: Invalid string: must match pattern /^[A-Za-z0-9_-]+$/",
+    "param": "response_format",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}}": {
+    "allow": "",
+    "code": "unsupported_json_schema",
+    "message": "Structured output schema root must be an object type.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"foo\":1}}}}": {
+    "allow": "",
+    "code": "invalid_json_schema",
+    "message": "Structured output schema is not valid JSON Schema draft 7.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#/$defs/missing\"}},\"required\":[\"a\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "invalid_json_schema",
+    "message": "Structured output schema is not valid JSON Schema draft 7.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"enum\":[\"x\",{\"y\":1}]}},\"required\":[\"a\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "unsupported_json_schema",
+    "message": "Structured output schema enum values must be scalar and satisfy the declared type.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"maxLength\":3}},\"required\":[\"a\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "invalid_json_schema",
+    "message": "Structured output schema is not valid JSON Schema draft 7.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\",\"minimum\":1}},\"required\":[\"a\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "unsupported_json_schema",
+    "message": "The managed runtime supports numeric bounds only for integer schemas.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"format\":\"date\"}},\"required\":[\"a\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "unsupported_json_schema",
+    "message": "Structured output schema formats are unsupported by the managed runtime contract.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"minLength\":1}},\"required\":[\"a\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "unsupported_json_schema",
+    "message": "Structured output schema minLength is unsupported by the managed runtime contract.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"pattern\":\"x\"}},\"required\":[\"a\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "unsupported_json_schema",
+    "message": "Structured output schema uses unsupported keyword 'pattern'.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"required\":[\"a\"]}}}}": {
+    "allow": "",
+    "code": "unsupported_json_schema",
+    "message": "Structured output objects require properties and additionalProperties: false.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"object\",\"properties\":{},\"required\":[\"missing\"],\"additionalProperties\":false}}}}": {
+    "allow": "",
+    "code": "invalid_json_schema",
+    "message": "Structured output schema is not valid JSON Schema draft 7.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"s\",\"schema\":{\"type\":\"strng\"}}}}": {
+    "allow": "",
+    "code": "invalid_json_schema",
+    "message": "Structured output schema is not valid JSON Schema draft 7.",
+    "param": "response_format.json_schema.schema",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"response_format\":{\"type\":\"yaml\"}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: response_format.type: Invalid input: expected \"text\" | \"json_object\" | \"json_schema\"",
+    "param": "response_format",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"temperature\":3}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: temperature: Too big: expected number to be \u003c=2",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"tool_choice\":{\"type\":\"function\",\"function\":{\"name\":\"x\"}}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: tool_choice.function.name: tool_choice.function.name must name exactly one declared function tool.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"f\",\"extra\":1}}]}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: tools.0.function: Unrecognized key: \"extra\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"top_p\":-1}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: top_p: Too small: expected number to be \u003e=0",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/chat/completions {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{}}]}]}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: messages.0.content.0.image_url: Invalid input",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/embeddings {\"model\":\"clef-flash-q4_k_m\",\"input\":\"x\"}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Model 'clef-flash-q4_k_m' is a decision model. Send typed questions to POST /v1/systemone instead.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/embeddings {\"model\":\"no-such-model\",\"input\":\"x\"}": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/embeddings {\"model\":\"qwen3-embedding-0.6b-q8_0\",\"input\":\"x\",\"dimensions\":-1}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: dimensions: Invalid input: expected a positive integer",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/embeddings {\"model\":\"qwen3-embedding-0.6b-q8_0\",\"input\":\"x\",\"dimensions\":5000}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Model 'qwen3-embedding-0.6b-q8_0' supports 1024 dimensions.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/embeddings {\"model\":\"qwen3-embedding-0.6b-q8_0\",\"input\":\"x\",\"encoding_format\":\"base64\"}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: encoding_format: Invalid input: expected \"float\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/embeddings {\"model\":\"qwen3-embedding-0.6b-q8_0\",\"input\":[1,\"a\"]}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input: Invalid input",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/embeddings {\"model\":\"qwen3-embedding-0.6b-q8_0\"}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input: Invalid input",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"clef-flash-q4_k_m\",\"state\":null,\"extra\":1,\"questions\":{\"q\":{\"type\":\"noul\"}}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Unrecognized key: \"extra\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"clef-flash-q4_k_m\",\"state\":null,\"files\":[\"x\"],\"questions\":{\"q\":{\"type\":\"noul\"}}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: files.0: Each file must be a base64 data URL (data:image/... or data:audio/...).",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"clef-flash-q4_k_m\",\"state\":null,\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"a\":null}}}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: questions.q.criteria: A choice question needs at least 2 options.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"clef-flash-q4_k_m\",\"state\":null,\"questions\":{\"q\":{\"type\":\"maybe\"}}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: questions.q.type: Invalid input: expected \"choice\" | \"score\" | \"noul\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"clef-flash-q4_k_m\",\"state\":null,\"questions\":{\"q\":{\"type\":\"score\",\"criteria\":[\"a\"]}}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: questions.q.criteria: Too small: expected array to have \u003e=2 items",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"clef-flash-q4_k_m\",\"state\":null,\"questions\":{}}": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: questions: questions must contain at least one question.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"no-such-model\",\"state\":null,\"questions\":{\"q\":{\"type\":\"noul\"}}}": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: /v1/systemone {\"model\":\"qwen2.5-coder-1.5b-instruct-q4_k_m\",\"state\":null,\"questions\":{\"q\":{\"type\":\"noul\"}}}": {
+    "allow": "",
+    "code": "unsupported_model_capability",
+    "message": "Model 'qwen2.5-coder-1.5b-instruct-q4_k_m' is not a decision model. Choose a model whose architecture.output_modalities include \"decisions\" from GET /v1/models.",
+    "param": "model",
+    "status": 400,
+    "type": "invalid_request_error"
+  }
+}

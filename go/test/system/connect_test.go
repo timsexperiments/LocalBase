@@ -14,12 +14,12 @@ import (
 // go into a file, everything else on stderr, and no secret unless a key was asked for.
 func TestCLIConnect(t *testing.T) {
 	root := filepath.Join(fsguard.ScratchDir(t), "root")
-	if res := runCLI(t, "go", root, "--json", "init"); res.code != 0 {
+	if res := runCLI(t, root, "--json", "init"); res.code != 0 {
 		t.Fatalf("init: %s", res.stderr)
 	}
 
 	// The overview: the gateway is stopped, and it says so.
-	over := runCLI(t, "go", root, "connect")
+	over := runCLI(t, root, "connect")
 	if over.code != 0 {
 		t.Fatalf("connect: %d %s", over.code, over.stderr)
 	}
@@ -30,7 +30,7 @@ func TestCLIConnect(t *testing.T) {
 	}
 
 	// A client's main snippet is all that stdout holds: this one is valid JSON.
-	file := runCLI(t, "go", root, "connect", "opencode", "--base-url", "https://gateway.example")
+	file := runCLI(t, root, "connect", "opencode", "--base-url", "https://gateway.example")
 	if file.code != 0 {
 		t.Fatalf("connect opencode: %d %s", file.code, file.stderr)
 	}
@@ -56,7 +56,7 @@ func TestCLIConnect(t *testing.T) {
 	}
 
 	// What has been run does not claim otherwise, and --json says which is which.
-	if res := runCLI(t, "go", root, "connect", "curl"); strings.Contains(res.stderr, "not run") {
+	if res := runCLI(t, root, "connect", "curl"); strings.Contains(res.stderr, "not run") {
 		t.Errorf("curl has been run: %s", res.stderr)
 	}
 	var listing struct {
@@ -67,7 +67,7 @@ func TestCLIConnect(t *testing.T) {
 			} `json:"clients"`
 		} `json:"data"`
 	}
-	all := runCLI(t, "go", root, "--json", "connect")
+	all := runCLI(t, root, "--json", "connect")
 	if err := json.Unmarshal([]byte(all.stdout), &listing); err != nil {
 		t.Fatalf("--json: %v\n%s", err, all.stdout)
 	}
@@ -86,7 +86,7 @@ func TestCLIConnect(t *testing.T) {
 	}
 
 	// With it, with the gateway stopped: a real key with exactly the chat scopes.
-	made := runCLI(t, "go", root, "--json", "connect", "curl", "--create-key")
+	made := runCLI(t, root, "--json", "connect", "curl", "--create-key")
 	if made.code != 0 {
 		t.Fatalf("create: %d %s", made.code, made.stderr)
 	}
@@ -132,7 +132,7 @@ func TestCLIConnect(t *testing.T) {
 	}
 
 	// Later runs do not repeat it.
-	later := runCLI(t, "go", root, "--json", "connect", "curl")
+	later := runCLI(t, root, "--json", "connect", "curl")
 	if strings.Contains(later.stdout+later.stderr, d.Secret) {
 		t.Error("the secret came back")
 	}
@@ -147,18 +147,18 @@ func TestCLIConnect(t *testing.T) {
 		"bad scope":           {"connect", "curl", "--create-key", "--scopes", "root"},
 		"bad expiry":          {"connect", "curl", "--create-key", "--expires-days", "0"},
 	} {
-		if res := runCLI(t, "go", root, args...); res.code != 2 {
+		if res := runCLI(t, root, args...); res.code != 2 {
 			t.Errorf("%s: exit %d: %s", name, res.code, res.stderr)
 		}
 	}
-	if res := runCLI(t, "go", root, "connect", "nope"); !strings.Contains(res.stderr, "opencode") {
+	if res := runCLI(t, root, "connect", "nope"); !strings.Contains(res.stderr, "opencode") {
 		t.Errorf("an unknown client should list the ids: %s", res.stderr)
 	}
 }
 
 func keyCount(t *testing.T, root string) int {
 	t.Helper()
-	res := runCLI(t, "go", root, "--json", "keys", "list")
+	res := runCLI(t, root, "--json", "keys", "list")
 	var env struct {
 		Data struct {
 			Keys []any `json:"keys"`

@@ -601,11 +601,11 @@ func TestUpgradeRefusesForegroundGateway(t *testing.T) {
 // The daily check's switch goes through a running gateway, or to the database with none.
 func TestUpgradeCheckUpdatesToggle(t *testing.T) {
 	rootDir := newUsageRoot(t)
-	res := runCLI(t, "go", rootDir, "--json", "upgrade", "check-updates", "on")
+	res := runCLI(t, rootDir, "--json", "upgrade", "check-updates", "on")
 	if res.code != 0 || !strings.Contains(res.stdout, `"via":"database"`) {
 		t.Errorf("no gateway: %d %s %s", res.code, res.stdout, res.stderr)
 	}
-	if res := runCLI(t, "go", rootDir, "upgrade", "check-updates", "maybe"); res.code != 2 {
+	if res := runCLI(t, rootDir, "upgrade", "check-updates", "maybe"); res.code != 2 {
 		t.Errorf("not on or off: %d", res.code)
 	}
 	var target *harness.Target
@@ -617,7 +617,7 @@ func TestUpgradeCheckUpdatesToggle(t *testing.T) {
 	if target == nil || target.Root == "" {
 		t.Skip("no Go gateway launched")
 	}
-	res = runCLI(t, "go", target.Root, "--json", "upgrade", "check-updates", "on")
+	res = runCLI(t, target.Root, "--json", "upgrade", "check-updates", "on")
 	if res.code != 0 || !strings.Contains(res.stdout, `"via":"gateway"`) {
 		t.Fatalf("through the gateway: %d %s %s", res.code, res.stdout, res.stderr)
 	}
@@ -633,7 +633,7 @@ func TestUpgradeCheckUpdatesToggle(t *testing.T) {
 		t.Errorf("as the gateway sees it: %s", body)
 	}
 	// Leave the shared gateway as it was.
-	if res := runCLI(t, "go", target.Root, "--json", "upgrade", "check-updates", "off"); res.code != 0 {
+	if res := runCLI(t, target.Root, "--json", "upgrade", "check-updates", "off"); res.code != 0 {
 		t.Errorf("off: %d %s", res.code, res.stderr)
 	}
 }

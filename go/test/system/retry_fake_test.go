@@ -24,7 +24,6 @@ import (
 // Once the fault is gone, the next request works, because the gateway retries the start. The reserve is
 // off, so that this reaches the start on a small CI runner too, and a refusal for memory fails the test.
 func TestDifferentialRetrySemanticsFake(t *testing.T) {
-	impls := []string{"go"}
 	if flag.Lookup("url").Value.String() != "" {
 		t.Skip("launches its own gateways")
 	}
@@ -38,65 +37,49 @@ func TestDifferentialRetrySemanticsFake(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
-	type answer struct {
-		status      int
-		code        string
-		retry       bool
-		message     string
-		afterTheFix int
+	bin := filepath.Join(tmp, "bin")
+	if err := fsguard.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	answers := map[string]answer{}
-	for _, impl := range impls {
-		bin := filepath.Join(tmp, impl+"-bin")
-		if err := fsguard.MkdirAll(bin, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		broken := filepath.Join(tmp, impl+"-broken")
-		if err := fsguard.WriteFile(broken, []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		script := filepath.Join(bin, "whisper-server")
-		if err := fsguard.WriteFile(script, []byte(fmt.Sprintf("#!/bin/sh\n[ -e %q ] && exit 3\nexec %q \"$@\"\n", broken, fake)), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		// The gateway is told where it is, and finds it on PATH too.
-		tg, err := harness.Launch(harness.Env([]string{"LOCALBASE_WHISPER_SERVER=" + script, "PATH=" + bin + ":" + os.Getenv("PATH")}), harness.NoReserve())
+	broken := filepath.Join(tmp, "broken")
+	if err := fsguard.WriteFile(broken, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(bin, "whisper-server")
+	if err := fsguard.WriteFile(script, []byte(fmt.Sprintf("#!/bin/sh\n[ -e %q ] && exit 3\nexec %q \"$@\"\n", broken, fake)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The gateway is told where it is, and finds it on PATH too.
+	tg, err := harness.Launch(harness.Env([]string{"LOCALBASE_WHISPER_SERVER=" + script, "PATH=" + bin + ":" + os.Getenv("PATH")}), harness.NoReserve())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Stop()
+	ask := func() *harness.Resp {
+		var b strings.Builder
+		mw := multipart.NewWriter(&b)
+		_ = mw.WriteField("model", "whisper-base-en-q8_0")
+		fw, err := mw.CreateFormFile("file", "a.wav")
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer tg.Stop()
-		ask := func() *harness.Resp {
-			var b strings.Builder
-			mw := multipart.NewWriter(&b)
-			_ = mw.WriteField("model", "whisper-base-en-q8_0")
-			fw, err := mw.CreateFormFile("file", "a.wav")
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, _ = fw.Write([]byte("RIFF\x24\x00\x00\x00WAVEfmt "))
-			_ = mw.Close()
-			h := harness.Bearer(tg.Key)
-			h["Content-Type"] = mw.FormDataContentType()
-			return harness.Do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
-		}
-		var a answer
-		for i := 1; i <= 2; i++ {
-			r := ask()
-			e, _ := r.JSON(t)["error"].(map[string]any)
-			a = answer{status: r.Status, retry: r.Header.Get("Retry-After") != ""}
-			a.code, _ = e["code"].(string)
-			a.message, _ = e["message"].(string)
-			if a.status != http.StatusServiceUnavailable || a.code != "service_unavailable" || !a.retry {
-				t.Errorf("%s, failed start #%d: %d %s Retry-After=%v: %s", impl, i, a.status, a.code, a.retry, r.Body)
-			}
-		}
-		if err := fsguard.RemoveAll(broken); err != nil {
-			t.Fatal(err)
-		}
-		a.afterTheFix = ask().Status
-		answers[impl] = a
+		_, _ = fw.Write([]byte("RIFF\x24\x00\x00\x00WAVEfmt "))
+		_ = mw.Close()
+		h := harness.Bearer(tg.Key)
+		h["Content-Type"] = mw.FormDataContentType()
+		return harness.Do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
 	}
-	if a, ok := answers["go"]; ok && a.afterTheFix != http.StatusOK {
-		t.Errorf("go after the fault was fixed: %d, want a retried start", a.afterTheFix)
+	for i := 1; i <= 2; i++ {
+		r := ask()
+		e, _ := r.JSON(t)["error"].(map[string]any)
+		if r.Status != http.StatusServiceUnavailable || e["code"] != "service_unavailable" || r.Header.Get("Retry-After") == "" {
+			t.Errorf("failed start #%d: %d %v Retry-After=%q: %s", i, r.Status, e["code"], r.Header.Get("Retry-After"), r.Body)
+		}
+	}
+	if err := fsguard.RemoveAll(broken); err != nil {
+		t.Fatal(err)
+	}
+	if status := ask().Status; status != http.StatusOK {
+		t.Errorf("after the fault was fixed: %d, want a retried start", status)
 	}
 }

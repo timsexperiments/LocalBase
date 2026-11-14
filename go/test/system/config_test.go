@@ -28,7 +28,7 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	docs := fsguard.ScratchDir(t)
 	initRoot(t, gr)
 	runCase(t, gr, "--json", "config", "show")
-	shown := runCLI(t, "go", gr, "--json", "config", "show")
+	shown := runCLI(t, gr, "--json", "config", "show")
 	var env struct {
 		Data struct{ Document string } `json:"data"`
 	}
@@ -175,7 +175,7 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	b, _ := os.ReadFile(change)
 	cmd.Stdin = bytes.NewReader(b)
 	out, _ := cmd.Output()
-	if want := runCLI(t, "go", gr, "--json", "config", "plan", "--file", change).stdout; string(out) != want {
+	if want := runCLI(t, gr, "--json", "config", "plan", "--file", change).stdout; string(out) != want {
 		t.Errorf("stdin plan:\n %s\nwant %s", out, want)
 	}
 }
@@ -202,7 +202,7 @@ func pinRaw(t *testing.T, path string) {
 func TestCLIConfigForegroundGateway(t *testing.T) {
 	for _, tg := range harness.Targets(t) {
 		t.Run(tg.Name, func(t *testing.T) {
-			shown := runCLI(t, tg.Name, tg.Root, "--json", "config", "show")
+			shown := runCLI(t, tg.Root, "--json", "config", "show")
 			var env struct {
 				Data struct{ Document string } `json:"data"`
 			}
@@ -215,15 +215,15 @@ func TestCLIConfigForegroundGateway(t *testing.T) {
 			fsguard.WriteFile(same, []byte(env.Data.Document), 0o600)
 			moved := filepath.Join(dir, "moved.toml")
 			fsguard.WriteFile(moved, []byte(regexp.MustCompile(`(?m)^port = (\d+)$`).ReplaceAllString(env.Data.Document, "port = 1")), 0o600)
-			res := runCLI(t, tg.Name, tg.Root, "--json", "config", "apply", "--file", moved)
+			res := runCLI(t, tg.Root, "--json", "config", "apply", "--file", moved)
 			if res.code != 1 || !strings.Contains(res.stdout, "Cannot automatically restart this gateway") {
 				t.Errorf("restart-required apply: %d %s", res.code, res.stdout)
 			}
-			res = runCLI(t, tg.Name, tg.Root, "--json", "config", "apply", "--file", same, "--wait")
+			res = runCLI(t, tg.Root, "--json", "config", "apply", "--file", same, "--wait")
 			if res.code != 0 || !strings.Contains(res.stdout, `"activation":"unchanged"`) || !strings.Contains(res.stdout, `"readiness":"ready"`) {
 				t.Errorf("unchanged apply --wait: %d %s %s", res.code, res.stdout, res.stderr)
 			}
-			if after := runCLI(t, tg.Name, tg.Root, "--json", "config", "show"); after.stdout != shown.stdout {
+			if after := runCLI(t, tg.Root, "--json", "config", "show"); after.stdout != shown.stdout {
 				t.Errorf("the configuration changed:\n %s\n %s", shown.stdout, after.stdout)
 			}
 		})

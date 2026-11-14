@@ -54,7 +54,7 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		status int
 		body   string
 	}
-	run := func(impl string) map[string]answer {
+	run := func() map[string]answer {
 		t.Helper()
 		tmp := fsguard.ScratchDir(t)
 		rootDir := filepath.Join(tmp, "root")
@@ -72,15 +72,15 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		}
 		doc += "\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"
 		fsguard.WriteFile(small, []byte(doc), 0o600)
-		if r := runCLI(t, impl, rootDir, "--non-interactive", "configure", "--config", small); r.code != 0 {
-			t.Fatalf("%s configure: %s%s", impl, r.stdout, r.stderr)
+		if r := runCLI(t, rootDir, "--non-interactive", "configure", "--config", small); r.code != 0 {
+			t.Fatalf("configure: %s%s", r.stdout, r.stderr)
 		}
 		// A tiny model on the fake backend, because its chat must really reach the fake: it fits on
 		// any runner, where a catalog model's size would have the chat refused for memory, and that
 		// refusal would pass the permission checks here without showing anything.
 		tiny := ggufFile(t, "qwen3", nil, 64*1024)
 		freshRootModel(t, rootDir, unlistedModel, "http://127.0.0.1:9", tiny)
-		// TS's catalog schema has no "chat" capability; both gateways chat with this model anyway.
+		// No "chat" capability (TS's catalog schema had none); the gateway chats with this model anyway.
 		entry := filepath.Join(rootDir, "catalog.d", unlistedModel+".json")
 		written, err := os.ReadFile(entry)
 		if err != nil {
@@ -103,8 +103,8 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 			{"--json", "access", "oidc", "add", "--id", "google", "--name", "Google", "--issuer", issuer, "--client-id", "cid", "--public-client", "--origin", origin},
 			{"--json", "access", "policy", "apply", "--file", policy},
 		} {
-			if r := runCLI(t, impl, rootDir, args...); r.code != 0 {
-				t.Fatalf("%s %v: %s%s", impl, args, r.stdout, r.stderr)
+			if r := runCLI(t, rootDir, args...); r.code != 0 {
+				t.Fatalf("%v: %s%s", args, r.stdout, r.stderr)
 			}
 		}
 		st, err := store.Open(filepath.Join(rootDir, "local-base.db"))
@@ -162,23 +162,23 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 			"role-can-chat":   send("POST", "/app/api/v1/chat/completions", chatter, chat),
 		}
 	}
-	goImpl := run("go")
-	if s := goImpl["session"]; s.status != 200 || !strings.Contains(s.body, `"permissions":[]`) || !strings.Contains(s.body, `"authenticated":true`) {
+	got := run()
+	if s := got["session"]; s.status != 200 || !strings.Contains(s.body, `"permissions":[]`) || !strings.Contains(s.body, `"authenticated":true`) {
 		t.Errorf("session: %d %s", s.status, s.body)
 	}
 	for _, name := range []string{"access", "keys", "management"} {
-		if goImpl[name].status != 403 {
-			t.Errorf("%s: %d %s", name, goImpl[name].status, goImpl[name].body)
+		if got[name].status != 403 {
+			t.Errorf("%s: %d %s", name, got[name].status, got[name].body)
 		}
 	}
 	// Go refuses where TS let the session past the permission check. It must never loosen this.
 	for _, name := range []string{"models", "image", "chat", "role-can't-chat"} {
-		if goImpl[name].status != 403 {
-			t.Errorf("go %s: %d %.300s", name, goImpl[name].status, goImpl[name].body)
+		if got[name].status != 403 {
+			t.Errorf("go %s: %d %.300s", name, got[name].status, got[name].body)
 		}
 	}
 	// A role that may chat reaches the fake, proving no real model ran: its reply says so.
-	if a := goImpl["role-can-chat"]; a.status != 200 || !strings.Contains(a.body, "hello from") {
+	if a := got["role-can-chat"]; a.status != 200 || !strings.Contains(a.body, "hello from") {
 		t.Errorf("a role that may chat: %d %.300s", a.status, a.body)
 	}
 }

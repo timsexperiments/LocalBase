@@ -7,13 +7,13 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
-// TestDifferentialModelDiscoveryRejections: every rejection that needs no
-// Hub request, on both gateways.
+// TestDifferentialModelDiscoveryRejections: every rejection that needs no Hub request.
 func TestDifferentialModelDiscoveryRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	const path = "/_localbase/model-discovery"
 	post := func(key func(*harness.Target) string, body string) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			h := harness.Bearer(key(tg))
 			h["Content-Type"] = "application/json"
 			out[tg.Name] = harness.Do(t, "POST", tg.BaseURL+path, h, body)
@@ -21,7 +21,7 @@ func TestDifferentialModelDiscoveryRejections(t *testing.T) {
 		return out
 	}
 	admin := func(tg *harness.Target) string { return tg.Admin }
-	for label, body := range map[string]string{
+	for label, body := range sortedCases(map[string]string{
 		"not json": `{`, "array": `[]`, "no action": `{}`, "unknown action": `{"action":"delete"}`,
 		"search extra key": `{"action":"search","query":"x","limit":3}`, "search bad kind": `{"action":"search","kind":"tts"}`,
 		"search long query":  `{"action":"search","query":"` + strings.Repeat("q", 201) + `"}`,
@@ -32,13 +32,13 @@ func TestDifferentialModelDiscoveryRejections(t *testing.T) {
 		"recipe unknown model": `{"action":"install-recipe","modelId":"no-such-model"}`,
 		"recipe without feed":  `{"action":"install-recipe","modelId":"` + harness.ChatModel + `"}`,
 		"too large":            `{"action":"search","query":"` + strings.Repeat("q", 2100) + `"}`,
-	} {
-		sameError(t, "discovery "+label, post(admin, body))
+	}) {
+		wantError(t, "discovery "+label, post(admin, body))
 	}
-	sameError(t, "discovery as reader", post(func(tg *harness.Target) string { return tg.Key }, `{"action":"search"}`))
+	wantError(t, "discovery as reader", post(func(tg *harness.Target) string { return tg.Key }, `{"action":"search"}`))
 	get := map[string]*harness.Resp{}
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		get[tg.Name] = harness.Do(t, "GET", tg.BaseURL+path, harness.Bearer(tg.Admin), "")
 	}
-	sameError(t, "discovery GET", get)
+	wantError(t, "discovery GET", get)
 }

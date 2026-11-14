@@ -99,25 +99,22 @@ func cleanEnv() []string {
 	return harness.Guarded(append(env, "LOCALBASE_CATALOG_FEED_URL=off", "NO_COLOR=1"))
 }
 
-func runCLI(t *testing.T, impl, root string, args ...string) cliResult {
+func runCLI(t *testing.T, root string, args ...string) cliResult {
 	t.Helper()
-	return runCLIEnv(t, impl, root, nil, args...)
+	return runCLIEnv(t, root, nil, args...)
 }
 
 // runCLIEnv runs a command with env entries replacing cleanEnv's.
-func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cliResult {
+func runCLIEnv(t *testing.T, root string, env []string, args ...string) cliResult {
 	t.Helper()
 	full := append([]string{"--root", root}, args...)
 	p := pinOf(t)
 	var cmd *exec.Cmd
-	switch {
-	case impl != "go":
-		t.Fatalf("runCLI(%q): the CLI is Go's (TypeScript was retired in step 7)", impl)
-	case p != nil:
+	if p != nil {
 		// A pinned test's runs are the lab build on the fixed host (golden_test.go).
 		cmd = exec.Command(goLabCLI(t), full...)
 		env = append([]string{"LOCALBASE_LAB_HOST_FILE=" + p.host}, env...)
-	default:
+	} else {
 		cmd = exec.Command(goCLI(t), full...)
 	}
 	cmd.Env = cleanEnv()
@@ -157,7 +154,7 @@ func cliRoot(t *testing.T) string {
 // initRoot runs `init` on a pinned test's root.
 func initRoot(t *testing.T, root string) {
 	t.Helper()
-	if res := runCLI(t, "go", root, "--json", "init"); res.code != 0 {
+	if res := runCLI(t, root, "--json", "init"); res.code != 0 {
 		t.Fatalf("init: %s%s", res.stdout, res.stderr)
 	}
 }
@@ -165,7 +162,7 @@ func initRoot(t *testing.T, root string) {
 // runCase runs one command of a pinned test, which its transcript pins.
 func runCase(t *testing.T, root string, args ...string) cliResult {
 	t.Helper()
-	return runCLI(t, "go", root, args...)
+	return runCLI(t, root, args...)
 }
 
 func TestCLIInitAndKeys(t *testing.T) {
@@ -188,7 +185,7 @@ func TestCLIInitAndKeys(t *testing.T) {
 		runCase(t, gr, args...)
 	}
 	// Mutations on the first key.
-	r := runCLI(t, "go", gr, "--json", "keys", "list")
+	r := runCLI(t, gr, "--json", "keys", "list")
 	var env struct {
 		Data struct{ Keys []struct{ ID string } }
 	}
@@ -199,7 +196,7 @@ func TestCLIInitAndKeys(t *testing.T) {
 	for _, args := range [][]string{{"keys", "scopes", "", "--scopes", "inference:speech,models:read"}, {"keys", "rotate", ""}, {"keys", "revoke", ""}} {
 		a := append([]string{"--json"}, args...)
 		a[3] = env.Data.Keys[0].ID
-		if r := runCLI(t, "go", gr, a...); r.code != 0 {
+		if r := runCLI(t, gr, a...); r.code != 0 {
 			t.Fatalf("%v: %d %s %s", a, r.code, r.stdout, r.stderr)
 		}
 	}
@@ -299,7 +296,7 @@ func checkGoLogs(t *testing.T, tg *harness.Target) {
 	}
 	read := func(args ...string) []event {
 		t.Helper()
-		r := runCLI(t, "go", tg.Root, append([]string{"--json", "logs"}, args...)...)
+		r := runCLI(t, tg.Root, append([]string{"--json", "logs"}, args...)...)
 		var env struct {
 			OK   bool                     `json:"ok"`
 			Data struct{ Events []event } `json:"data"`
@@ -340,7 +337,7 @@ func checkGoLogs(t *testing.T, tg *harness.Target) {
 		}
 	}
 	for _, bad := range [][]string{{"--limit", "0"}, {"--level", "loud"}} {
-		r := runCLI(t, "go", tg.Root, append([]string{"--json", "logs"}, bad...)...)
+		r := runCLI(t, tg.Root, append([]string{"--json", "logs"}, bad...)...)
 		var env struct {
 			OK    bool `json:"ok"`
 			Error struct {
@@ -359,7 +356,7 @@ func TestCLISmoke(t *testing.T) {
 		if tg.Root == "" || !tg.RealModel {
 			continue
 		}
-		r := runCLI(t, tg.Name, tg.Root, "--json", "smoke", "--timeout", "120")
+		r := runCLI(t, tg.Root, "--json", "smoke", "--timeout", "120")
 		var env struct {
 			OK   bool `json:"ok"`
 			Data struct {
@@ -374,7 +371,7 @@ func TestCLISmoke(t *testing.T) {
 			t.Errorf("%s smoke: exit %d %s %s", tg.Name, r.code, r.stdout, r.stderr)
 		}
 		// The temporary key is gone afterwards.
-		keys := runCLI(t, tg.Name, tg.Root, "--json", "keys", "list")
+		keys := runCLI(t, tg.Root, "--json", "keys", "list")
 		if strings.Contains(keys.stdout, "smoke (temporary)") {
 			t.Errorf("%s: smoke key left behind", tg.Name)
 		}

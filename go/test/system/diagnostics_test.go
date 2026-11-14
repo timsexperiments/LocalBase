@@ -73,7 +73,7 @@ func TestCLIDiagnostics(t *testing.T) {
 	out := fsguard.ScratchDir(t)
 	bundle := func(root, name string) (cliResult, map[string][]byte) {
 		path := filepath.Join(out, name)
-		res := runCLIEnv(t, "go", root, env, "--json", "diagnostics", "--output", path)
+		res := runCLIEnv(t, root, env, "--json", "diagnostics", "--output", path)
 		if res.code != 0 {
 			t.Fatalf("diagnostics: %d %s %s", res.code, res.stdout, res.stderr)
 		}

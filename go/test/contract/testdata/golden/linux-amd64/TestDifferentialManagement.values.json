@@ -1,0 +1,1367 @@
+{
+  "script": [
+    {
+      "body": {
+        "error": {
+          "code": "invalid_api_key",
+          "message": "Authentication is required."
+        }
+      },
+      "status": 401
+    },
+    {
+      "body": {
+        "error": {
+          "code": "insufficient_permissions",
+          "message": "This identity cannot perform that action."
+        }
+      },
+      "status": 403
+    },
+    {
+      "body": {
+        "keys": [
+          {
+            "createdAt": "\u003ctime\u003e",
+            "id": "key_\u003cuuid\u003e",
+            "lastRotatedAt": "\u003ctime\u003e",
+            "name": "contract",
+            "prefix": "\u003cprefix\u003e",
+            "scopes": [
+              "inference:chat",
+              "inference:embeddings",
+              "inference:decision",
+              "inference:image",
+              "inference:video",
+              "inference:speech",
+              "inference:transcription",
+              "models:read"
+            ]
+          },
+          {
+            "createdAt": "\u003ctime\u003e",
+            "id": "key_\u003cuuid\u003e",
+            "lastRotatedAt": "\u003ctime\u003e",
+            "name": "contract-admin",
+            "prefix": "\u003cprefix\u003e",
+            "scopes": [
+              "inference:chat",
+              "inference:embeddings",
+              "inference:decision",
+              "inference:image",
+              "inference:video",
+              "inference:speech",
+              "inference:transcription",
+              "models:read",
+              "models:manage",
+              "configuration:read",
+              "configuration:manage",
+              "keys:read",
+              "keys:manage",
+              "access:read",
+              "access:manage",
+              "sessions:read",
+              "sessions:revoke",
+              "system:read",
+              "system:manage"
+            ]
+          },
+          {
+            "createdAt": "\u003ctime\u003e",
+            "id": "key_\u003cuuid\u003e",
+            "lastRotatedAt": "\u003ctime\u003e",
+            "name": "contract-chat-only",
+            "prefix": "\u003cprefix\u003e",
+            "scopes": [
+              "inference:chat"
+            ]
+          }
+        ]
+      },
+      "status": 200
+    },
+    {
+      "body": "",
+      "status": 405
+    },
+    {
+      "body": {
+        "error": {
+          "code": "insufficient_permissions",
+          "message": "This identity cannot perform that action."
+        }
+      },
+      "status": 403
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "key": {
+          "createdAt": "\u003ctime\u003e",
+          "expiresAt": "\u003ctime\u003e",
+          "id": "key_\u003cuuid\u003e",
+          "lastRotatedAt": "\u003ctime\u003e",
+          "name": "made",
+          "prefix": "\u003cprefix\u003e",
+          "scopes": [
+            "inference:chat",
+            "models:read"
+          ]
+        },
+        "secret": "\u003csecret\u003e"
+      },
+      "status": 201
+    },
+    {
+      "body": {
+        "error": {
+          "code": "key_not_found",
+          "message": "The API key was not found."
+        }
+      },
+      "status": 404
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "key": {
+          "createdAt": "\u003ctime\u003e",
+          "expiresAt": "\u003ctime\u003e",
+          "id": "key_\u003cuuid\u003e",
+          "lastRotatedAt": "\u003ctime\u003e",
+          "name": "made",
+          "prefix": "\u003cprefix\u003e",
+          "scopes": [
+            "inference:chat",
+            "models:read"
+          ]
+        },
+        "secret": "\u003csecret\u003e"
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "key": {
+          "createdAt": "\u003ctime\u003e",
+          "expiresAt": "\u003ctime\u003e",
+          "id": "key_\u003cuuid\u003e",
+          "lastRotatedAt": "\u003ctime\u003e",
+          "name": "made",
+          "prefix": "\u003cprefix\u003e",
+          "scopes": [
+            "keys:read"
+          ]
+        }
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "key": {
+          "createdAt": "\u003ctime\u003e",
+          "expiresAt": "\u003ctime\u003e",
+          "id": "key_\u003cuuid\u003e",
+          "lastRotatedAt": "\u003ctime\u003e",
+          "name": "made",
+          "prefix": "\u003cprefix\u003e",
+          "revokedAt": "\u003ctime\u003e",
+          "scopes": [
+            "keys:read"
+          ]
+        }
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "key": {
+          "createdAt": "\u003ctime\u003e",
+          "expiresAt": "\u003ctime\u003e",
+          "id": "key_\u003cuuid\u003e",
+          "lastRotatedAt": "\u003ctime\u003e",
+          "name": "made",
+          "prefix": "\u003cprefix\u003e",
+          "revokedAt": "\u003ctime\u003e",
+          "scopes": [
+            "keys:read"
+          ]
+        }
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "keys": [
+          {
+            "createdAt": "\u003ctime\u003e",
+            "id": "key_\u003cuuid\u003e",
+            "lastRotatedAt": "\u003ctime\u003e",
+            "name": "contract",
+            "prefix": "\u003cprefix\u003e",
+            "scopes": [
+              "inference:chat",
+              "inference:embeddings",
+              "inference:decision",
+              "inference:image",
+              "inference:video",
+              "inference:speech",
+              "inference:transcription",
+              "models:read"
+            ]
+          },
+          {
+            "createdAt": "\u003ctime\u003e",
+            "id": "key_\u003cuuid\u003e",
+            "lastRotatedAt": "\u003ctime\u003e",
+            "name": "contract-admin",
+            "prefix": "\u003cprefix\u003e",
+            "scopes": [
+              "inference:chat",
+              "inference:embeddings",
+              "inference:decision",
+              "inference:image",
+              "inference:video",
+              "inference:speech",
+              "inference:transcription",
+              "models:read",
+              "models:manage",
+              "configuration:read",
+              "configuration:manage",
+              "keys:read",
+              "keys:manage",
+              "access:read",
+              "access:manage",
+              "sessions:read",
+              "sessions:revoke",
+              "system:read",
+              "system:manage"
+            ]
+          },
+          {
+            "createdAt": "\u003ctime\u003e",
+            "id": "key_\u003cuuid\u003e",
+            "lastRotatedAt": "\u003ctime\u003e",
+            "name": "contract-chat-only",
+            "prefix": "\u003cprefix\u003e",
+            "scopes": [
+              "inference:chat"
+            ]
+          },
+          {
+            "createdAt": "\u003ctime\u003e",
+            "expiresAt": "\u003ctime\u003e",
+            "id": "key_\u003cuuid\u003e",
+            "lastRotatedAt": "\u003ctime\u003e",
+            "name": "made",
+            "prefix": "\u003cprefix\u003e",
+            "revokedAt": "\u003ctime\u003e",
+            "scopes": [
+              "keys:read"
+            ]
+          }
+        ]
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "invalid_api_key",
+          "message": "Authentication is required."
+        }
+      },
+      "status": 401
+    },
+    {
+      "body": {
+        "error": {
+          "code": "insufficient_permissions",
+          "message": "This identity cannot perform that action."
+        }
+      },
+      "status": 403
+    },
+    {
+      "body": {
+        "config": null,
+        "emailDelivery": null,
+        "policy": null,
+        "policyRevision": null,
+        "roles": [],
+        "users": []
+      },
+      "status": 200
+    },
+    {
+      "body": "",
+      "status": 405
+    },
+    {
+      "body": {
+        "error": {
+          "code": "provider_not_configured",
+          "message": "Configure a browser identity provider first."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "provider_not_configured",
+          "message": "Configure a browser identity provider first."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "provider_not_configured",
+          "message": "Configure a browser identity provider first."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "email_delivery_not_configured",
+          "message": "Configure email delivery before enabling magic-link authentication."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "email_delivery_not_configured",
+          "message": "Configure email delivery before enabling magic-link authentication."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read"
+          ],
+          "provider": {
+            "audience": "aud",
+            "kind": "cloudflare-access",
+            "teamDomain": "team.cloudflareaccess.com"
+          }
+        },
+        "restartRequired": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read"
+          ],
+          "provider": {
+            "audience": "aud",
+            "kind": "cloudflare-access",
+            "teamDomain": "team.cloudflareaccess.com"
+          }
+        },
+        "emailDelivery": null,
+        "policy": null,
+        "policyRevision": null,
+        "roles": [],
+        "users": []
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read"
+          ],
+          "provider": {
+            "kind": "direct",
+            "registrations": [
+              {
+                "clientAuthentication": "client-secret-basic",
+                "clientId": "cid",
+                "id": "google",
+                "issuer": "https://accounts.google.com",
+                "kind": "oidc",
+                "name": "Google"
+              }
+            ]
+          }
+        },
+        "restartRequired": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "emailDelivery": {
+          "authentication": "none",
+          "from": "LocalBase@example.com",
+          "host": "127.0.0.1",
+          "port": 1,
+          "security": "starttls"
+        },
+        "restartRequired": false
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read"
+          ],
+          "provider": {
+            "kind": "direct",
+            "registrations": [
+              {
+                "id": "email",
+                "kind": "magic-link",
+                "name": "Email"
+              },
+              {
+                "clientAuthentication": "client-secret-basic",
+                "clientId": "cid",
+                "id": "google",
+                "issuer": "https://accounts.google.com",
+                "kind": "oidc",
+                "name": "Google"
+              }
+            ]
+          }
+        },
+        "restartRequired": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "email_delivery_in_use",
+          "message": "Remove the magic-link registration before disabling email delivery."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "email_delivery_failed",
+          "message": "Email delivery failed."
+        }
+      },
+      "status": 502
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read"
+          ],
+          "provider": {
+            "kind": "direct",
+            "registrations": [
+              {
+                "id": "email",
+                "kind": "magic-link",
+                "name": "Email"
+              },
+              {
+                "clientAuthentication": "client-secret-basic",
+                "clientId": "cid",
+                "id": "google",
+                "issuer": "https://accounts.google.com",
+                "kind": "oidc",
+                "name": "Google"
+              }
+            ]
+          }
+        },
+        "emailDelivery": {
+          "authentication": "none",
+          "from": "LocalBase@example.com",
+          "host": "127.0.0.1",
+          "port": 1,
+          "security": "starttls"
+        },
+        "policy": null,
+        "policyRevision": null,
+        "roles": [],
+        "users": []
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "matchedRoles": [],
+        "permissions": [
+          "inference:chat",
+          "models:read"
+        ],
+        "policyConfigured": false
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "policy_revision_conflict",
+          "message": "The browser access policy changed. Refresh it and try again."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "policy": {
+          "bindings": [
+            {
+              "email": "owner@example.com",
+              "kind": "email",
+              "role": "admin"
+            },
+            {
+              "domain": "example.com",
+              "kind": "email-domain",
+              "role": "chat"
+            }
+          ],
+          "defaultRole": null,
+          "roles": [
+            {
+              "description": "Chat",
+              "name": "chat",
+              "permissions": [
+                "inference:chat"
+              ]
+            },
+            {
+              "description": "Admin",
+              "name": "admin",
+              "permissions": [
+                "models:read",
+                "access:read",
+                "access:manage"
+              ]
+            }
+          ]
+        },
+        "policyRevision": "\u003crevision\u003e",
+        "restartRequired": false
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read"
+          ],
+          "provider": {
+            "kind": "direct",
+            "registrations": [
+              {
+                "id": "email",
+                "kind": "magic-link",
+                "name": "Email"
+              },
+              {
+                "clientAuthentication": "client-secret-basic",
+                "clientId": "cid",
+                "id": "google",
+                "issuer": "https://accounts.google.com",
+                "kind": "oidc",
+                "name": "Google"
+              }
+            ]
+          }
+        },
+        "emailDelivery": {
+          "authentication": "none",
+          "from": "LocalBase@example.com",
+          "host": "127.0.0.1",
+          "port": 1,
+          "security": "starttls"
+        },
+        "policy": {
+          "bindings": [
+            {
+              "domain": "example.com",
+              "kind": "email-domain",
+              "role": "chat"
+            },
+            {
+              "email": "owner@example.com",
+              "kind": "email",
+              "role": "admin"
+            }
+          ],
+          "defaultRole": null,
+          "roles": [
+            {
+              "description": "Admin",
+              "name": "admin",
+              "permissions": [
+                "models:read",
+                "access:read",
+                "access:manage"
+              ]
+            },
+            {
+              "description": "Chat",
+              "name": "chat",
+              "permissions": [
+                "inference:chat"
+              ]
+            }
+          ]
+        },
+        "policyRevision": "\u003crevision\u003e",
+        "roles": [
+          {
+            "description": "Admin",
+            "name": "admin",
+            "permissions": [
+              "models:read",
+              "access:read",
+              "access:manage"
+            ]
+          },
+          {
+            "description": "Chat",
+            "name": "chat",
+            "permissions": [
+              "inference:chat"
+            ]
+          }
+        ],
+        "users": []
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "matchedRoles": [
+          "admin",
+          "chat"
+        ],
+        "permissions": [
+          "inference:chat",
+          "models:read",
+          "access:read",
+          "access:manage"
+        ],
+        "policyConfigured": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "matchedRoles": [
+          "chat"
+        ],
+        "permissions": [
+          "inference:chat"
+        ],
+        "policyConfigured": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "matchedRoles": [],
+        "permissions": [],
+        "policyConfigured": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "emailDelivered": false,
+        "signInUrl": "https://lb.example.com/app/login",
+        "user": {
+          "createdAt": "\u003ctime\u003e",
+          "email": "friend@example.com",
+          "id": "\u003cuuid\u003e",
+          "roles": [
+            "chat"
+          ],
+          "status": "pending",
+          "updatedAt": "\u003ctime\u003e"
+        }
+      },
+      "status": 201
+    },
+    {
+      "body": {
+        "error": {
+          "code": "managed_user_exists",
+          "message": "The managed user already exists."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "error": {
+          "code": "role_not_found",
+          "message": "One or more browser access roles were not found."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "user": {
+          "createdAt": "\u003ctime\u003e",
+          "email": "friend@example.com",
+          "id": "\u003cuuid\u003e",
+          "roles": [
+            "admin",
+            "chat"
+          ],
+          "status": "pending",
+          "updatedAt": "\u003ctime\u003e"
+        }
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "user": {
+          "createdAt": "\u003ctime\u003e",
+          "email": "friend@example.com",
+          "id": "\u003cuuid\u003e",
+          "roles": [
+            "admin",
+            "chat"
+          ],
+          "status": "disabled",
+          "updatedAt": "\u003ctime\u003e"
+        }
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "user": {
+          "createdAt": "\u003ctime\u003e",
+          "email": "friend@example.com",
+          "id": "\u003cuuid\u003e",
+          "roles": [
+            "admin",
+            "chat"
+          ],
+          "status": "active",
+          "updatedAt": "\u003ctime\u003e"
+        }
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "managed_user_not_found",
+          "message": "The managed user was not found."
+        }
+      },
+      "status": 404
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read"
+          ],
+          "provider": {
+            "kind": "direct",
+            "registrations": [
+              {
+                "id": "email",
+                "kind": "magic-link",
+                "name": "Email"
+              },
+              {
+                "clientAuthentication": "client-secret-basic",
+                "clientId": "cid",
+                "id": "google",
+                "issuer": "https://accounts.google.com",
+                "kind": "oidc",
+                "name": "Google"
+              }
+            ]
+          }
+        },
+        "emailDelivery": {
+          "authentication": "none",
+          "from": "LocalBase@example.com",
+          "host": "127.0.0.1",
+          "port": 1,
+          "security": "starttls"
+        },
+        "policy": {
+          "bindings": [
+            {
+              "domain": "example.com",
+              "kind": "email-domain",
+              "role": "chat"
+            },
+            {
+              "email": "owner@example.com",
+              "kind": "email",
+              "role": "admin"
+            }
+          ],
+          "defaultRole": null,
+          "roles": [
+            {
+              "description": "Admin",
+              "name": "admin",
+              "permissions": [
+                "models:read",
+                "access:read",
+                "access:manage"
+              ]
+            },
+            {
+              "description": "Chat",
+              "name": "chat",
+              "permissions": [
+                "inference:chat"
+              ]
+            }
+          ]
+        },
+        "policyRevision": "\u003crevision\u003e",
+        "roles": [
+          {
+            "description": "Admin",
+            "name": "admin",
+            "permissions": [
+              "models:read",
+              "access:read",
+              "access:manage"
+            ]
+          },
+          {
+            "description": "Chat",
+            "name": "chat",
+            "permissions": [
+              "inference:chat"
+            ]
+          }
+        ],
+        "users": [
+          {
+            "createdAt": "\u003ctime\u003e",
+            "email": "friend@example.com",
+            "id": "\u003cuuid\u003e",
+            "roles": [
+              "admin",
+              "chat"
+            ],
+            "status": "active",
+            "updatedAt": "\u003ctime\u003e"
+          }
+        ]
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "policy_conflict",
+          "message": "The browser access policy cannot be changed."
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "user": {
+          "createdAt": "\u003ctime\u003e",
+          "email": "friend@example.com",
+          "id": "\u003cuuid\u003e",
+          "roles": [
+            "admin",
+            "chat"
+          ],
+          "status": "active",
+          "updatedAt": "\u003ctime\u003e"
+        }
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read",
+            "access:manage"
+          ],
+          "provider": {
+            "kind": "direct",
+            "registrations": [
+              {
+                "id": "email",
+                "kind": "magic-link",
+                "name": "Email"
+              },
+              {
+                "clientAuthentication": "client-secret-basic",
+                "clientId": "cid",
+                "id": "google",
+                "issuer": "https://accounts.google.com",
+                "kind": "oidc",
+                "name": "Google"
+              }
+            ]
+          }
+        },
+        "restartRequired": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "cleared": true,
+        "policyRevision": null,
+        "restartRequired": false
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "registration_not_found",
+          "message": "The identity provider registration was not found."
+        }
+      },
+      "status": 404
+    },
+    {
+      "body": {
+        "config": {
+          "origin": "https://lb.example.com",
+          "permissions": [
+            "inference:chat",
+            "models:read",
+            "access:manage"
+          ],
+          "provider": {
+            "kind": "direct",
+            "registrations": [
+              {
+                "clientAuthentication": "client-secret-basic",
+                "clientId": "cid",
+                "id": "google",
+                "issuer": "https://accounts.google.com",
+                "kind": "oidc",
+                "name": "Google"
+              }
+            ]
+          }
+        },
+        "removedRegistrationId": "email",
+        "restartRequired": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "emailDeliveryDisabled": true,
+        "restartRequired": false
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "config": null,
+        "removedRegistrationId": "google",
+        "restartRequired": true
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "disabled": false,
+        "restartRequired": false
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "The management request is invalid."
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "cleared": false,
+        "policyRevision": null,
+        "restartRequired": false
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "config": null,
+        "emailDelivery": null,
+        "policy": null,
+        "policyRevision": null,
+        "roles": [],
+        "users": []
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "invalid_api_key",
+          "message": "Unauthorized: Invalid or missing API key.",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 401
+    },
+    {
+      "body": {
+        "error": {
+          "code": "method_not_allowed",
+          "message": "Method not allowed.",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 405
+    },
+    {
+      "body": {
+        "error": {
+          "code": "insufficient_permissions",
+          "message": "Forbidden: The credential lacks the required permission.",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 403
+    },
+    {
+      "body": {
+        "configured": false,
+        "envAvailable": false,
+        "source": null
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "Invalid Hugging Face token payload.",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "Expected a Hugging Face access token without spaces (8 to 256 characters).",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "Expected a Hugging Face access token without spaces (8 to 256 characters).",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "Expected a Hugging Face access token without spaces (8 to 256 characters).",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "Expected a Hugging Face access token without spaces (8 to 256 characters).",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 400
+    },
+    {
+      "body": {
+        "error": {
+          "code": "hf_token_missing",
+          "message": "No Hugging Face token is saved or set in HF_TOKEN.",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 409
+    },
+    {
+      "body": {
+        "configured": true,
+        "envAvailable": false,
+        "source": "saved"
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "configured": true,
+        "envAvailable": false,
+        "source": "saved"
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "configured": false,
+        "envAvailable": false,
+        "source": null
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "Hugging Face token body exceeds the 1024 byte limit.",
+          "param": null,
+          "type": "invalid_request_error"
+        }
+      },
+      "status": 413
+    }
+  ]
+}

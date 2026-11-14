@@ -1,0 +1,1262 @@
+{
+  "error: management PUT": {
+    "allow": "GET, POST",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: management array": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model management payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: management as reader": {
+    "allow": "",
+    "code": "insufficient_permissions",
+    "message": "Forbidden: The credential lacks the required permission.",
+    "param": null,
+    "status": 403,
+    "type": "invalid_request_error"
+  },
+  "error: management bad action": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model management payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: management empty id": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model management payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: management enable missing files": {
+    "allow": "",
+    "code": "conflict",
+    "message": "Install the model first.",
+    "param": null,
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: management experimental": {
+    "allow": "",
+    "code": "invalid_request",
+    "message": "Unknown catalog model.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: management extra key": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model management payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: management install selected and installed": {
+    "allow": "",
+    "code": "conflict",
+    "message": "Disable this model and wait for the runtime to release it before installing.",
+    "param": null,
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: management long id": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model management payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: management not json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid model management payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: management too large": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Model management body exceeds the 1024 byte limit.",
+    "param": null,
+    "status": 413,
+    "type": "invalid_request_error"
+  },
+  "error: management uninstall selected": {
+    "allow": "",
+    "code": "conflict",
+    "message": "Disable the model and wait for runtime reconciliation before uninstalling.",
+    "param": null,
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: management unknown model": {
+    "allow": "",
+    "code": "invalid_request",
+    "message": "Unknown catalog model.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "ok: activate": {
+    "body": {
+      "action": "activate",
+      "detail": "Complete",
+      "downloadedBytes": null,
+      "state": "complete",
+      "totalBytes": null
+    },
+    "status": 200
+  },
+  "ok: disable active stt": {
+    "body": {
+      "action": "disable",
+      "detail": "Complete",
+      "downloadedBytes": null,
+      "state": "complete",
+      "totalBytes": null
+    },
+    "status": 200
+  },
+  "ok: enable": {
+    "body": {
+      "action": "enable",
+      "detail": "Complete",
+      "downloadedBytes": null,
+      "state": "complete",
+      "totalBytes": null
+    },
+    "status": 200
+  },
+  "ok: install": {
+    "body": {
+      "action": "install",
+      "detail": "Preparing installation",
+      "downloadedBytes": 0,
+      "state": "running",
+      "totalBytes": 4096
+    },
+    "status": 202
+  },
+  "ok: uninstall": {
+    "body": {
+      "action": "uninstall",
+      "detail": "Complete",
+      "downloadedBytes": null,
+      "state": "complete",
+      "totalBytes": null
+    },
+    "status": 200
+  },
+  "state: after activate": {
+    "canManage": true,
+    "models": [
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 3013027808,
+        "enabled": false,
+        "id": "qwen3.5-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 20399789760,
+        "enabled": false,
+        "id": "qwen3.6-35b-a3b-iq4_nl_xl",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17772537440,
+        "enabled": false,
+        "id": "qwen3.8-27b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 639150592,
+        "enabled": true,
+        "id": "qwen3-embedding-0.6b-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 2496703776,
+        "enabled": false,
+        "id": "qwen3-embedding-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7110678016,
+        "enabled": true,
+        "id": "clef-flash-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 19861466656,
+        "enabled": false,
+        "id": "clef-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 81768585,
+        "enabled": false,
+        "id": "whisper-base-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 1624555275,
+        "enabled": false,
+        "id": "whisper-large-v3-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1483348280,
+        "enabled": true,
+        "id": "qwen3-tts-1.7b-base-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1483348280,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 92364770,
+        "enabled": true,
+        "id": "kokoro-82m-v1.0-q8",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6515956452,
+        "enabled": false,
+        "id": "z-image-turbo-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 5293871164,
+        "enabled": false,
+        "id": "flux2-klein-4b-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 2133804992,
+        "enabled": true,
+        "id": "dreamshaper-8-lcm",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 2133804992,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7105348188,
+        "enabled": true,
+        "id": "juggernaut-xl-v9",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 10276163504,
+        "enabled": true,
+        "id": "fastwan2.2-ti2v-5b-q6_k",
+        "installUnavailableReason": "Disable wan2.1-t2v-1.3b-q8_0 and wait for its runtime to release shared artifacts before installing.",
+        "installed": false,
+        "installedBytes": 6043068256,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 23322713370,
+        "enabled": false,
+        "id": "wan2.2-s2v-14b-fp8",
+        "installUnavailableReason": "This video model can't run on any computer LocalBase supports today. Choose another video model.",
+        "installed": false,
+        "installedBytes": 6296883574,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 4096,
+        "enabled": true,
+        "id": "contract-tiny-stt",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 4096,
+        "operation": {
+          "action": "activate",
+          "detail": "Complete",
+          "downloadedBytes": null,
+          "state": "complete",
+          "totalBytes": null
+        }
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17253896444,
+        "enabled": true,
+        "id": "flux1-schnell-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1117320768,
+        "enabled": true,
+        "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1117320768,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938065488,
+        "enabled": true,
+        "id": "realvis-xl-v5.0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938081905,
+        "enabled": true,
+        "id": "sdxl-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 7832652374,
+        "enabled": true,
+        "id": "wan2.1-t2v-1.3b-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 7832652374,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 81781811,
+        "enabled": true,
+        "id": "whisper-base-en-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 81781811,
+        "operation": null
+      }
+    ],
+    "storage": {}
+  },
+  "state: after install": {
+    "canManage": true,
+    "models": [
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 3013027808,
+        "enabled": false,
+        "id": "qwen3.5-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 20399789760,
+        "enabled": false,
+        "id": "qwen3.6-35b-a3b-iq4_nl_xl",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17772537440,
+        "enabled": false,
+        "id": "qwen3.8-27b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 639150592,
+        "enabled": true,
+        "id": "qwen3-embedding-0.6b-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 2496703776,
+        "enabled": false,
+        "id": "qwen3-embedding-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7110678016,
+        "enabled": true,
+        "id": "clef-flash-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 19861466656,
+        "enabled": false,
+        "id": "clef-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 81768585,
+        "enabled": false,
+        "id": "whisper-base-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 1624555275,
+        "enabled": false,
+        "id": "whisper-large-v3-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1483348280,
+        "enabled": true,
+        "id": "qwen3-tts-1.7b-base-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1483348280,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 92364770,
+        "enabled": true,
+        "id": "kokoro-82m-v1.0-q8",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6515956452,
+        "enabled": false,
+        "id": "z-image-turbo-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 5293871164,
+        "enabled": false,
+        "id": "flux2-klein-4b-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 2133804992,
+        "enabled": true,
+        "id": "dreamshaper-8-lcm",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 2133804992,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7105348188,
+        "enabled": true,
+        "id": "juggernaut-xl-v9",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 10276163504,
+        "enabled": true,
+        "id": "fastwan2.2-ti2v-5b-q6_k",
+        "installUnavailableReason": "Disable wan2.1-t2v-1.3b-q8_0 and wait for its runtime to release shared artifacts before installing.",
+        "installed": false,
+        "installedBytes": 6043068256,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 23322713370,
+        "enabled": false,
+        "id": "wan2.2-s2v-14b-fp8",
+        "installUnavailableReason": "This video model can't run on any computer LocalBase supports today. Choose another video model.",
+        "installed": false,
+        "installedBytes": 6296883574,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 4096,
+        "enabled": false,
+        "id": "contract-tiny-stt",
+        "installUnavailableReason": null,
+        "installed": true,
+        "installedBytes": 4096,
+        "operation": {
+          "action": "install",
+          "detail": "Installation complete",
+          "downloadedBytes": 4096,
+          "state": "complete",
+          "totalBytes": 4096
+        }
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17253896444,
+        "enabled": true,
+        "id": "flux1-schnell-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1117320768,
+        "enabled": true,
+        "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1117320768,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938065488,
+        "enabled": true,
+        "id": "realvis-xl-v5.0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938081905,
+        "enabled": true,
+        "id": "sdxl-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 7832652374,
+        "enabled": true,
+        "id": "wan2.1-t2v-1.3b-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 7832652374,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 81781811,
+        "enabled": true,
+        "id": "whisper-base-en-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 81781811,
+        "operation": null
+      }
+    ],
+    "storage": {}
+  },
+  "state: after uninstall": {
+    "canManage": true,
+    "models": [
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 3013027808,
+        "enabled": false,
+        "id": "qwen3.5-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 20399789760,
+        "enabled": false,
+        "id": "qwen3.6-35b-a3b-iq4_nl_xl",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17772537440,
+        "enabled": false,
+        "id": "qwen3.8-27b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 639150592,
+        "enabled": true,
+        "id": "qwen3-embedding-0.6b-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 2496703776,
+        "enabled": false,
+        "id": "qwen3-embedding-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7110678016,
+        "enabled": true,
+        "id": "clef-flash-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 19861466656,
+        "enabled": false,
+        "id": "clef-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 81768585,
+        "enabled": false,
+        "id": "whisper-base-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 1624555275,
+        "enabled": false,
+        "id": "whisper-large-v3-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1483348280,
+        "enabled": true,
+        "id": "qwen3-tts-1.7b-base-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1483348280,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 92364770,
+        "enabled": true,
+        "id": "kokoro-82m-v1.0-q8",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6515956452,
+        "enabled": false,
+        "id": "z-image-turbo-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 5293871164,
+        "enabled": false,
+        "id": "flux2-klein-4b-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 2133804992,
+        "enabled": true,
+        "id": "dreamshaper-8-lcm",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 2133804992,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7105348188,
+        "enabled": true,
+        "id": "juggernaut-xl-v9",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 10276163504,
+        "enabled": true,
+        "id": "fastwan2.2-ti2v-5b-q6_k",
+        "installUnavailableReason": "Disable wan2.1-t2v-1.3b-q8_0 and wait for its runtime to release shared artifacts before installing.",
+        "installed": false,
+        "installedBytes": 6043068256,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 23322713370,
+        "enabled": false,
+        "id": "wan2.2-s2v-14b-fp8",
+        "installUnavailableReason": "This video model can't run on any computer LocalBase supports today. Choose another video model.",
+        "installed": false,
+        "installedBytes": 6296883574,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 4096,
+        "enabled": false,
+        "id": "contract-tiny-stt",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": {
+          "action": "uninstall",
+          "detail": "Complete",
+          "downloadedBytes": null,
+          "state": "complete",
+          "totalBytes": null
+        }
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17253896444,
+        "enabled": true,
+        "id": "flux1-schnell-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1117320768,
+        "enabled": true,
+        "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1117320768,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938065488,
+        "enabled": true,
+        "id": "realvis-xl-v5.0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938081905,
+        "enabled": true,
+        "id": "sdxl-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 7832652374,
+        "enabled": true,
+        "id": "wan2.1-t2v-1.3b-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 7832652374,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 81781811,
+        "enabled": true,
+        "id": "whisper-base-en-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 81781811,
+        "operation": null
+      }
+    ],
+    "storage": {}
+  },
+  "state: initial": {
+    "canManage": true,
+    "models": [
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 3013027808,
+        "enabled": false,
+        "id": "qwen3.5-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 20399789760,
+        "enabled": false,
+        "id": "qwen3.6-35b-a3b-iq4_nl_xl",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17772537440,
+        "enabled": false,
+        "id": "qwen3.8-27b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 639150592,
+        "enabled": true,
+        "id": "qwen3-embedding-0.6b-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 2496703776,
+        "enabled": false,
+        "id": "qwen3-embedding-4b-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7110678016,
+        "enabled": true,
+        "id": "clef-flash-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 19861466656,
+        "enabled": false,
+        "id": "clef-q4_k_m",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 81768585,
+        "enabled": false,
+        "id": "whisper-base-q8_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 1624555275,
+        "enabled": false,
+        "id": "whisper-large-v3-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1483348280,
+        "enabled": true,
+        "id": "qwen3-tts-1.7b-base-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1483348280,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 92364770,
+        "enabled": true,
+        "id": "kokoro-82m-v1.0-q8",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6515956452,
+        "enabled": false,
+        "id": "z-image-turbo-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 5293871164,
+        "enabled": false,
+        "id": "flux2-klein-4b-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 2133804992,
+        "enabled": true,
+        "id": "dreamshaper-8-lcm",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 2133804992,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 7105348188,
+        "enabled": true,
+        "id": "juggernaut-xl-v9",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 10276163504,
+        "enabled": true,
+        "id": "fastwan2.2-ti2v-5b-q6_k",
+        "installUnavailableReason": "Disable wan2.1-t2v-1.3b-q8_0 and wait for its runtime to release shared artifacts before installing.",
+        "installed": false,
+        "installedBytes": 6043068256,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": false,
+        "downloadBytes": 23322713370,
+        "enabled": false,
+        "id": "wan2.2-s2v-14b-fp8",
+        "installUnavailableReason": "This video model can't run on any computer LocalBase supports today. Choose another video model.",
+        "installed": false,
+        "installedBytes": 6296883574,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 4096,
+        "enabled": false,
+        "id": "contract-tiny-stt",
+        "installUnavailableReason": null,
+        "installed": true,
+        "installedBytes": 4096,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 17253896444,
+        "enabled": true,
+        "id": "flux1-schnell-q4_0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 1117320768,
+        "enabled": true,
+        "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 1117320768,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938065488,
+        "enabled": true,
+        "id": "realvis-xl-v5.0",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": false,
+        "canInstall": true,
+        "downloadBytes": 6938081905,
+        "enabled": true,
+        "id": "sdxl-turbo",
+        "installUnavailableReason": null,
+        "installed": false,
+        "installedBytes": 0,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 7832652374,
+        "enabled": true,
+        "id": "wan2.1-t2v-1.3b-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 7832652374,
+        "operation": null
+      },
+      {
+        "active": true,
+        "canInstall": false,
+        "downloadBytes": 81781811,
+        "enabled": true,
+        "id": "whisper-base-en-q8_0",
+        "installUnavailableReason": "Disable this model and wait for the runtime to release it before installing.",
+        "installed": true,
+        "installedBytes": 81781811,
+        "operation": null
+      }
+    ],
+    "storage": {}
+  }
+}

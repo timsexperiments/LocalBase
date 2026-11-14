@@ -14,10 +14,10 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestDifferentialSpeechRejections sends invalid speech requests to both
-// gateways and requires the same status, type, code, param and message.
-// None of them reaches a backend.
+// TestDifferentialSpeechRejections sends invalid speech requests and requires an error envelope for
+// each; none of them reaches a backend. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialSpeechRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	long := strings.Repeat("a", 257)
 	cases := []struct{ name, body string }{
 		{"not json", `{`},
@@ -41,9 +41,7 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 		{"voice not on model", `{"model":"kokoro-82m-v1.0-q8","input":"hi","voice":"harbor"}`},
 	}
 	for _, c := range cases {
-		var first *harness.Resp
-		var firstName string
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = "application/json"
 			r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h, c.body)
@@ -52,23 +50,13 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 				continue
 			}
 			r.ErrorCode(t)
-			if first == nil {
-				first, firstName = r, tg.Name
-				continue
-			}
-			ea, eb := first.JSON(t)["error"].(map[string]any), r.JSON(t)["error"].(map[string]any)
-			for _, k := range []string{"type", "code", "param", "message"} {
-				if ea[k] != eb[k] || first.Status != r.Status {
-					t.Errorf("%s:\n %s %d %s\n %s %d %s", c.name, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
-					break
-				}
-			}
+			pinError(t, c.name, r)
 		}
 	}
 }
 
-// TestSpeechQwenReal runs Qwen3-TTS through tts-server on both gateways: a
-// reference voice, then a custom voice cloned from an uploaded recording.
+// TestSpeechQwenReal runs Qwen3-TTS through tts-server: a reference voice, then a custom voice
+// cloned from an uploaded recording.
 func TestSpeechQwenReal(t *testing.T) {
 	d := os.Getenv("LOCALBASE_CONTRACT_TTS_MODELS")
 	if d == "" || os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
@@ -120,11 +108,6 @@ func TestSpeechQwenReal(t *testing.T) {
 				}
 			}
 		}
-	}
-	if len(harness.Targets(t)) == 2 {
-		a, b := outputs["ts"], outputs["go"]
-		t.Logf("reference voice identical: %v (%d vs %d bytes); custom voice identical: %v (%d vs %d bytes)",
-			bytes.Equal(a[0], b[0]), len(a[0]), len(b[0]), bytes.Equal(a[1], b[1]), len(a[1]), len(b[1]))
 	}
 }
 

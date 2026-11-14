@@ -74,7 +74,7 @@ func TestCLIHubGolden(t *testing.T) {
 	dir, _ = filepath.EvalSymlinks(dir)
 	rootDir := filepath.Join(dir, "root")
 	env := []string{"HF_ENDPOINT=" + endpoint, "HF_TOKEN="}
-	if r := runCLIEnv(t, "go", rootDir, env, "--json", "init"); r.code != 0 {
+	if r := runCLIEnv(t, rootDir, env, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)
 	}
 	t.Logf("%d CLI cases", len(g.CLI))
@@ -90,7 +90,7 @@ func TestCLIHubGolden(t *testing.T) {
 			// The TS run had this user model selected.
 			selectSTT(t, rootDir, "whisper-base.en-q8_0")
 		}
-		r := runCLIEnv(t, "go", rootDir, env, args...)
+		r := runCLIEnv(t, rootDir, env, args...)
 		var envl struct {
 			OK    bool            `json:"ok"`
 			Data  json.RawMessage `json:"data"`

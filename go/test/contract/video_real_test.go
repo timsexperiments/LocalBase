@@ -22,10 +22,10 @@ import (
 )
 
 // TestVideoReal runs one FastWan text-to-video job at the catalog's
-// qualification bounds on each implementation, TS first, during an
+// qualification bounds, during an
 // operator-approved memory window (LOCALBASE_CONTRACT_VIDEO_MODELS names
 // read-only clones of the weights; LOCALBASE_CONTRACT_VIDEO_OUT keeps the
-// outputs and report). Each gateway is halted, with its sd-server, as soon
+// outputs and report). The gateway is halted, with its sd-server, as soon
 // as its job ends. While a job runs, host memory, the sd-server footprint,
 // the live gateway's /health and its warnings are watched: available memory
 // below 12 GiB, or a live memory refusal or pressure change, cancels the job
@@ -39,17 +39,10 @@ func TestVideoReal(t *testing.T) {
 		out = fsguard.ScratchDir(t)
 	}
 	fsguard.MkdirAll(out, 0o700)
-	byName := map[string]*harness.Target{}
-	for _, tg := range harness.Targets(t) {
-		byName[tg.Name] = tg
-	}
 	host := memory.NewHostProvider()
 	report := map[string]any{}
-	for _, name := range []string{"ts", "go"} {
-		tg := byName[name]
-		if tg == nil {
-			continue
-		}
+	for _, tg := range harness.Targets(t) {
+		name := tg.Name
 		r := runRealVideo(t, tg, host, out)
 		report[name] = r
 		b, _ := json.MarshalIndent(report, "", "  ")
@@ -67,13 +60,6 @@ func TestVideoReal(t *testing.T) {
 	b, _ := json.MarshalIndent(report, "", "  ")
 	fsguard.WriteFile(filepath.Join(out, "report.json"), b, 0o600)
 	t.Logf("report:\n%s", b)
-	if len(probe) == 2 {
-		for _, k := range []string{"container", "codec", "frames", "width", "height", "fps"} {
-			if probe["ts"][k] != probe["go"][k] {
-				t.Errorf("%s differs: ts %q, go %q", k, probe["ts"][k], probe["go"][k])
-			}
-		}
-	}
 }
 
 const liveGateway = "http://127.0.0.1:2273"

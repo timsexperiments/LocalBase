@@ -53,9 +53,8 @@ func TestReadiness(t *testing.T) {
 			t.Errorf("modalities = %v", body["modalities"])
 		}
 	})
-	// Every configured media modality admits requests on both. Video arrives in
-	// Go with M6, so only TS lists it for now. An external gateway (-url, the
-	// M7 rehearsal) has its own media selection, so only the LLM is checked.
+	// Every configured media modality but video admits requests. An external gateway (-url, the M7
+	// rehearsal) has its own media selection, so only the LLM is checked there.
 	if len(harness.Targets(t)) == 1 && harness.Targets(t)[0].Name == "external" {
 		return
 	}
@@ -338,7 +337,7 @@ func j(v any) string {
 	return string(b)
 }
 
-// rejectionCases fail before admission in both implementations.
+// rejectionCases fail before admission.
 var rejectionCases = []struct{ path, body string }{
 	{"/v1/chat/completions", `not json`},
 	{"/v1/chat/completions", `{"model":"","messages":[{"role":"user","content":"x"}]}`},
@@ -386,30 +385,19 @@ func schemaCase(schema string) string {
 	return `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
 }
 
-// TestDifferentialRejections sends requests that fail validation to every
-// target and requires the same status, error type, code and param.
+// TestDifferentialRejections sends requests that fail validation to every target and requires an
+// error envelope for each. (Until step 7 TS and Go had to answer each the same.)
 func TestDifferentialRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	for _, c := range rejectionCases {
-		var first *harness.Resp
-		var firstName string
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			r := harness.Do(t, "POST", tg.BaseURL+c.path, harness.Bearer(tg.Key), c.body)
 			if r.Status != 400 && r.Status != 404 {
 				t.Errorf("%s %s %s: %d %s", tg.Name, c.path, c.body, r.Status, r.Body)
 				continue
 			}
 			r.ErrorCode(t)
-			if first == nil {
-				first, firstName = r, tg.Name
-				continue
-			}
-			ea, eb := first.JSON(t)["error"].(map[string]any), r.JSON(t)["error"].(map[string]any)
-			for _, k := range []string{"type", "code", "param"} {
-				if ea[k] != eb[k] || first.Status != r.Status {
-					t.Errorf("%s %s:\n %s %d %s\n %s %d %s", c.path, c.body, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
-					break
-				}
-			}
+			pinError(t, c.path+" "+c.body, r)
 		}
 	}
 }
