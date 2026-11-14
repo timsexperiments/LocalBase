@@ -432,6 +432,25 @@ func TestTheReleaseShapeCarriesNoTestKey(t *testing.T) {
 	if strings.Contains(symbols("release-unstripped"), "upgrade.testKey") || !strings.Contains(symbols("tagged-unstripped"), "upgrade.testKey") {
 		t.Error("go tool nm: upgrade.testKey should be only in the unstripped tagged build")
 	}
+	// scripts/check-release-artifact.sh, which release-go.yml runs on every binary it builds,
+	// passes both untagged builds, though each was given the key's -X, and fails both tagged ones,
+	// for the tag and for the key's bytes. It finds the name upgrade.testKey only where it's kept.
+	for name, want := range map[string][]string{
+		"release":            nil,
+		"release-unstripped": nil,
+		"tagged":             {"localbase_testkey tag", "key-shaped"},
+		"tagged-unstripped":  {"localbase_testkey tag", "upgrade.testKey", "key-shaped"},
+	} {
+		out, err := exec.Command("../../scripts/check-release-artifact.sh", bins[name]).CombinedOutput()
+		if passed := err == nil; passed != (want == nil) {
+			t.Errorf("check-release-artifact.sh on the %s build: passed %v, want %v\n%s", name, passed, want == nil, out)
+		}
+		for _, why := range want {
+			if !strings.Contains(string(out), why) {
+				t.Errorf("check-release-artifact.sh on the %s build doesn't say %q:\n%s", name, why, out)
+			}
+		}
+	}
 }
 
 func TestUpgradeRefusesBadReleasesRealBinary(t *testing.T) {

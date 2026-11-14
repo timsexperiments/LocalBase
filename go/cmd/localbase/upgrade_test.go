@@ -128,6 +128,21 @@ func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 			t.Errorf("%s builds something other than ./cmd/localbase", p)
 		}
 	}
+	// What the release builds is checked too, by go/scripts/check-release-artifact.sh, between the
+	// build and the step that keeps the binaries. A move of the script, or of the step, fails here
+	// rather than leaving the release to check nothing.
+	const check = "go/scripts/check-release-artifact.sh"
+	if _, err := os.Stat(filepath.Join(repo, check)); err != nil {
+		t.Errorf("the release's artifact check: %v", err)
+	}
+	wf, err := os.ReadFile(filepath.Join(repo, ".github", "workflows", "release-go.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	build, run, keep := strings.Index(string(wf), "scripts/release/build.sh binaries"), strings.Index(string(wf), check+` "$RUNNER_TEMP"/out/bin/*`), strings.Index(string(wf), "name: Keep the binaries")
+	if build < 0 || run < 0 || keep < 0 || !(build < run && run < keep) {
+		t.Errorf("release-go.yml must run %s on every built binary after the build and before keeping them (build %d, check %d, keep %d)", check, build, run, keep)
+	}
 }
 
 // The test key exists only in a build tagged localbase_testkey: every shipped source file (cmd,

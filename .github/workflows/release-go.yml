@@ -79,6 +79,10 @@ jobs:
         run: scripts/release/generate-notices.sh --check
       - name: Cross-compile
         run: scripts/release/build.sh binaries "$RUNNER_TEMP/out"
+      - name: No test key in the binaries
+        # Reads what was built, so it also sees a build flag that reached it from the environment
+        # rather than the recipe. Before anything is kept, signed or packaged.
+        run: go/scripts/check-release-artifact.sh "$RUNNER_TEMP"/out/bin/*
       - name: Keep the binaries
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
