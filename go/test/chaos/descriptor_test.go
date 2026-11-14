@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // Bursts of mixed reads and writes fill the connection pool, and its descriptors level off under

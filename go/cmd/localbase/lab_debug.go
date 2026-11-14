@@ -12,7 +12,7 @@ import (
 	runtimepprof "runtime/pprof"
 )
 
-// The reliability lab's view inside a gateway (go/tools/lab): a localbase_lab
+// The reliability lab's view inside a gateway (go/test/lab): a localbase_lab
 // build only, never a release. When LOCALBASE_LAB_DEBUG_ADDR is set, this
 // process serves its goroutine, file and heap counts and pprof on that
 // address, for leak checks and for dumps when one fails.

@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // metric is one measured figure. Lower is better for all of them.

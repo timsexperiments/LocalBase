@@ -97,11 +97,11 @@ jobs:
       - name: Unit tests
         # Every package with tests runs here, so a new one is covered by default. Left out, and run
         # in their own jobs or workflows: internal/backup (backup-race, backup-files), contract and
-        # system (contract), test/chaos (chaos.yml, and one test in small), tools/soak and tools/lab
+        # system (contract), test/chaos (chaos.yml, and one test in small), tools/soak and test/lab
         # (small, without -race).
         run: |
           # shellcheck disable=SC2046 # one argument per package
-          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/test/lab$')
       - name: Build everything the other jobs build, for the cache
         # Compiles and links every test binary, with and without -race, and runs none of them.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -207,7 +207,7 @@ jobs:
       - name: Set up Go
         uses: ./.github/actions/go-setup
       - name: Reliability tool tests
-        run: go test ./tools/soak ./tools/lab
+        run: go test ./tools/soak ./test/lab
       - name: A killed gateway leaves no backend behind
         run: go test ./test/chaos -run '^TestGatewayKilledOutright$' -count=1
 
@@ -259,7 +259,7 @@ jobs:
         # The same packages as Linux's unit job.
         run: |
           # shellcheck disable=SC2046 # one argument per package
-          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/test/lab$')
       - name: Build everything the other jobs build, for the cache
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
@@ -321,7 +321,7 @@ jobs:
           if [ "$n" -ne "$BACKUP_FILE_COUNT" ]; then echo "expected $BACKUP_FILE_COUNT tests matching BACKUP_FILE_TESTS in internal/backup, found $n"; exit 1; fi
           go test -timeout 15m -count=1 -run "$BACKUP_FILE_TESTS" ./internal/backup
       - name: Reliability tool tests
-        run: go test ./tools/soak ./tools/lab
+        run: go test ./tools/soak ./test/lab
       - name: A killed gateway leaves no backend behind
         run: go test ./test/chaos -run '^TestGatewayKilledOutright$' -count=1
       - name: Compiled CSS is current

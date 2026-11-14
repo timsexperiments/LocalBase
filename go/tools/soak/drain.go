@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // drainBudget bounds a SIGTERM under load: serve allows 5 s for runs and 10 s

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 func dbPath(g *lab.Gateway) string { return filepath.Join(g.Root, "local-base.db") }

@@ -35,7 +35,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/tools/lab"
+	"github.com/timsexperiments/LocalBase/go/test/lab"
 )
 
 // exitIncomplete is run.ts's status for a run that finished and left something unchecked. Its

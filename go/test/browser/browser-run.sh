@@ -34,7 +34,7 @@ browser_started() {
 }
 
 # browser_watch: a kill -9 of this script runs none of its cleanup, so a small process does it
-# then. The same way as watchOwner in tools/lab/stats.go: its own session, so killing this
+# then. The same way as watchOwner in test/lab/stats.go: its own session, so killing this
 # script's whole group doesn't take it too, and none of this script's settings (set -e would
 # stop it at the first thing already gone). It ends by itself once the browser is gone.
 browser_watch() {

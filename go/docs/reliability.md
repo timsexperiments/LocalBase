@@ -159,7 +159,7 @@ clock is never moved, so timers running through a real jump are not tested.
 
 ## The lab
 
-`tools/lab` is what the tools share: it builds the gateway with the
+`test/lab` is what the tools share: it builds the gateway with the
 `localbase_lab` tag and the fake backend, creates a scratch root, and starts and
 samples gateways.
 
