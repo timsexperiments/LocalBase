@@ -1,5 +1,5 @@
 #!/bin/sh
-. "$(dirname "$0")/../../tools/test-ports.sh"
+. "$(dirname "$0")/../../scripts/test-ports.sh"
 # Microphone dictation end to end (DESIGN §17.9): desktop Chrome with a fake
 # capture device that plays a speech clip, so the page records through
 # getUserMedia, encodes the browser WAV and sends it to the gateway's

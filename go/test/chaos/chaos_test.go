@@ -267,7 +267,7 @@ func chatComesBack(t *testing.T, ctx context.Context, c *lab.Client, g *lab.Gate
 // knownBug skips a test that fails because of an open bug, unless
 // LOCALBASE_CHAOS_ALL is set (make chaos-all). It names the bug and the pull request
 // that fixes it; that fix removes the line, and the test guards it from then on.
-// tools/known-bugs-check.sh fails once a named pull request has merged, so a skip
+// scripts/known-bugs-check.sh fails once a named pull request has merged, so a skip
 // cannot outlive its bug unnoticed. noPRYet says there is no fix yet, and fails that
 // check too. And a skip has to be true: see reportStaleSkips.
 func knownBug(t *testing.T, pr int, bug string) {
@@ -278,7 +278,7 @@ func knownBug(t *testing.T, pr int, bug string) {
 	}
 }
 
-const noPRYet = 0 //nolint:unused // for a new bug that has no PR yet; tools/known-bugs-check.sh fails on it
+const noPRYet = 0 //nolint:unused // for a new bug that has no PR yet; scripts/known-bugs-check.sh fails on it
 
 // --- a backend dies mid-request -------------------------------------------------
 

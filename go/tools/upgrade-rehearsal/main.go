@@ -216,7 +216,7 @@ func sameLive(a, b map[string]liveState) string {
 
 // --- the kit: binaries and signed releases ------------------------------------------------------
 
-// releaseBuild is how tools/build.sh, the one build recipe, builds a release of a version: its
+// releaseBuild is how scripts/build.sh, the one build recipe, builds a release of a version: its
 // go build flags, -ldflags and environment, read from the script rather than copied, so the kit
 // can't drift from what CI ships. Run from go/, like the rest of this command.
 type releaseBuild struct {
@@ -227,11 +227,11 @@ type releaseBuild struct {
 
 func readReleaseBuild(version string) (releaseBuild, error) {
 	ask := func(flag string) (string, error) {
-		cmd := exec.Command("tools/build.sh", flag)
+		cmd := exec.Command("scripts/build.sh", flag)
 		cmd.Env = append(os.Environ(), "VERSION="+version)
 		out, err := cmd.Output()
 		if err != nil {
-			return "", fmt.Errorf("tools/build.sh %s: %w", flag, err)
+			return "", fmt.Errorf("scripts/build.sh %s: %w", flag, err)
 		}
 		return strings.TrimSpace(string(out)), nil
 	}

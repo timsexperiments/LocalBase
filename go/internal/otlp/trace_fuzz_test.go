@@ -7,7 +7,7 @@ import (
 )
 
 // Every request can carry these headers, with or without a credential. Plain `go test` runs the
-// seeds, and tools/fuzz.sh fuzzes on demand.
+// seeds, and scripts/fuzz.sh fuzzes on demand.
 func FuzzExtract(f *testing.F) {
 	f.Add("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", "a=b")
 	f.Add("ff-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", "")

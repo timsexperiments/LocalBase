@@ -104,15 +104,16 @@ func scan(fsys fs.FS) (map[string][]string, error) {
 	return found, err
 }
 
-// trees are what the guard reads: go/tools, and go/test, where step 7 moves the test suites and
-// their scripts out of go/tools. A move from one to the other changes neither what is read nor how
-// much. Findings are named from the go directory, tools/... or test/....
-var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}}
+// trees are what the guard reads: go/tools, go/test, where step 7 moved the test suites and their
+// scripts, and go/scripts, where it moved the shell glue. A move from one to another changes neither
+// what is read nor how much. Findings are named from the go directory: tools/..., test/... or
+// scripts/....
+var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}, {Label: "scripts", Dir: "../../../scripts"}}
 
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive.
-const minRead = 106
+const minRead = 123
 
 // scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as go/tools
 // is), and checks the floor only for the trees.
@@ -128,16 +129,16 @@ func scanTrees(t *testing.T, other string) map[string][]string {
 // many such deletes each has. They are reported, not changed here. A file may not gain one,
 // and no other file may join. Lower a number, or remove a line, as they are fixed.
 var knownToDelete = map[string]int{
-	"tools/contract.sh":                  1,
-	"test/platform/ios-check.sh":         2,
-	"tools/otelcol-check.sh":             1,
-	"tools/placement-rollback-check.sh":  1,
-	"tools/rehearsal.sh":                 1,
-	"tools/shadow.sh":                    6,
-	"tools/sync-catalog.sh":              1,
-	"test/platform/systemd-check.sh":     1,
-	"tools/tailwind.sh":                  1,
-	"tools/upgrade-rehearsal-systemd.sh": 1,
+	"scripts/contract.sh":                  1,
+	"test/platform/ios-check.sh":           2,
+	"scripts/otelcol-check.sh":             1,
+	"scripts/placement-rollback-check.sh":  1,
+	"tools/rehearsal.sh":                   1,
+	"tools/shadow.sh":                      6,
+	"scripts/sync-catalog.sh":              1,
+	"test/platform/systemd-check.sh":       1,
+	"scripts/tailwind.sh":                  1,
+	"scripts/upgrade-rehearsal-systemd.sh": 1,
 }
 
 func TestNothingDeletesThroughAVariableOrOutsideScratch(t *testing.T) {

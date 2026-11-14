@@ -1,11 +1,11 @@
 #!/bin/sh
 # Builds internal/web/static/app.css with the pinned Tailwind standalone CLI.
 # No Node or npm. The CLI is cached in go/.cache and verified by sha256.
-#   tools/tailwind.sh          build
-#   tools/tailwind.sh --check  build, then fail if app.css changed (CI)
+#   scripts/tailwind.sh          build
+#   scripts/tailwind.sh --check  build, then fail if app.css changed (CI)
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
-pins="$here/tools/tailwind.pins"
+pins="$here/scripts/tailwind.pins"
 version=$(awk '$1=="version"{print $2}' "$pins")
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) target=macos-arm64 ;;
@@ -31,5 +31,5 @@ before=$(shasum -a 256 < "$out" 2>/dev/null || true)
 "$bin" --input "$here/internal/web/css/input.css" --output "$out" --minify 2>/dev/null
 if [ "${1:-}" = "--check" ]; then
   after=$(shasum -a 256 < "$out")
-  [ "$before" = "$after" ] || { echo "app.css is stale; run tools/tailwind.sh and commit it" >&2; exit 1; }
+  [ "$before" = "$after" ] || { echo "app.css is stale; run scripts/tailwind.sh and commit it" >&2; exit 1; }
 fi

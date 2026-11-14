@@ -7,7 +7,7 @@
 // top-level key replaces the lower value whole.
 package catalog
 
-//go:generate ../../tools/sync-catalog.sh
+//go:generate ../../scripts/sync-catalog.sh
 
 import (
 	"bytes"

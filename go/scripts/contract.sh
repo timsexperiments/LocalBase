@@ -4,12 +4,12 @@
 # printed) when the run fails, and removed when it passes. A failure without
 # output then still leaves its events behind.
 #
-#   tools/contract.sh [go test flags...] [-args -impl=both]
+#   scripts/contract.sh [go test flags...] [-args -impl=both]
 #
 # LOCALBASE_CONTRACT_LOGS chooses the directory (default: $TMPDIR/localbase-contract-runs).
 set -uo pipefail
 cd "$(dirname "$0")/.."
-. tools/disk-guard.sh
+. scripts/disk-guard.sh
 disk_guard contract
 dir=${LOCALBASE_CONTRACT_LOGS:-${TMPDIR:-/tmp}/localbase-contract-runs}
 mkdir -p "$dir"

@@ -1,5 +1,5 @@
 #!/bin/bash
-. "$(dirname "$0")/test-ports.sh"
+. "$(dirname "$0")/../scripts/test-ports.sh"
 # M7 shadow and rollback drill on a COPY of a LocalBase root (DESIGN §17.2,
 # §17.3). Nothing here writes to the source root: the database is read
 # through SQLite's online backup API on a read-only connection, everything

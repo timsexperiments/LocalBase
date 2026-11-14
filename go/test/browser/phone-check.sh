@@ -1,5 +1,5 @@
 #!/bin/sh
-. "$(dirname "$0")/../../tools/test-ports.sh"
+. "$(dirname "$0")/../../scripts/test-ports.sh"
 # DOM-level phone checks in headless Chrome against a running --no-auth
 # LocalBase UI (DESIGN §22.6): at 360, 390 and 430 px (touch) and 1280 px,
 # every page has no horizontal overflow, controls are at least 44 px, the

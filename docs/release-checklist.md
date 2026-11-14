@@ -79,7 +79,7 @@ From a clean, up-to-date `main`:
 ```sh
 git switch main && git pull --ff-only
 gh run list --branch main --limit 5                # everything green
-go/tools/build.sh /tmp/lb-check && /tmp/lb-check version
+go/scripts/build.sh /tmp/lb-check && /tmp/lb-check version
 git tag -a v0.2.0 -m "LocalBase 0.2.0"
 git push origin v0.2.0
 gh run watch "$(gh run list --workflow release-go.yml --limit 1 --json databaseId -q '.[0].databaseId')"

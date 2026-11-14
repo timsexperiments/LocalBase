@@ -1,7 +1,7 @@
 #!/bin/sh
 # Opt-in check against a real OpenTelemetry Collector (not run in CI).
 #
-#   go/tools/otelcol-check.sh            # from the repository root
+#   go/scripts/otelcol-check.sh            # from the repository root
 #
 # Downloads the pinned core otelcol release into a scratch directory,
 # verifies its sha256, and runs TestRealCollector: both gateways export to

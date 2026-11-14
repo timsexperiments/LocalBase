@@ -3,8 +3,8 @@
 # (docs/memory-reserve.md). For a real 8 to 24 GiB Mac. Nothing here changes
 # settings or files.
 #
-#   tools/reserve-check.sh sample [seconds]   read-only; safe with anything running
-#   tools/reserve-check.sh probe  [floorGiB]  allocates memory; see the limits below
+#   scripts/reserve-check.sh sample [seconds]   read-only; safe with anything running
+#   scripts/reserve-check.sh probe  [floorGiB]  allocates memory; see the limits below
 #
 # probe refuses to start if LocalBase or a model runtime is running, or on more
 # than 24 GiB. It takes 256 MiB at a time, and stops as soon as any of these holds:

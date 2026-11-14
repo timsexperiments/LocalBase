@@ -12,7 +12,7 @@ import (
 )
 
 // These feed what a caller or a backend can send to what reads it first. Plain `go test` runs the
-// seeds, and tools/fuzz.sh fuzzes on demand. Each must never panic or overflow the stack.
+// seeds, and scripts/fuzz.sh fuzzes on demand. Each must never panic or overflow the stack.
 
 func FuzzValidators(f *testing.F) {
 	for _, seed := range []string{

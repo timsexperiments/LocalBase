@@ -17,7 +17,7 @@ guarded, but named branches aren't. **GAP** nothing automated fails if it breaks
 
 ## 1. The biggest gap: CI never compares Go with TS
 
-`go.yml` runs `tools/contract.sh -args -impl=go`. Every differential and most CLI tests
+`go.yml` runs `scripts/contract.sh -args -impl=go`. Every differential and most CLI tests
 need TS and are **skipped in CI**. `ci.yml`'s `bun test` runs only on PRs into main and pushes to main. So
 "the dual suite stays green" is currently only true when someone runs it by hand, and
 nothing in CI would stop a PR breaking TS parity, including this cleanup.
@@ -26,7 +26,7 @@ nothing in CI would stop a PR breaking TS parity, including this cleanup.
 `macos-14`.
 - **When:** nightly on a schedule, plus `workflow_dispatch`, plus any PR labelled `dual`.
   Not on every PR: it takes minutes and needs a model file.
-- **What:** `bun install --frozen-lockfile`, then `tools/contract.sh -args -impl=both`.
+- **What:** `bun install --frozen-lockfile`, then `scripts/contract.sh -args -impl=both`.
   Keep the failing run's log as an artifact, as `go.yml` does.
 - **The model:** the TS gateway won't start without its active model's files, so the job
   downloads the pinned `qwen2.5-coder-1.5b-instruct-q4_k_m.gguf` (about 1 GB, public) into
@@ -42,7 +42,7 @@ runs them; a skip on the platform alone fails `TestPlatformAbsencesAreNamed`.
 
 ## 2. Baseline
 
-Statement coverage, darwin/arm64, from `tools/coverage.sh both`: unit tests plus the dual
+Statement coverage, darwin/arm64, from `scripts/coverage.sh both`: unit tests plus the dual
 contract suite with no real models. Neither alone is the true figure: per-package
 `go test -cover` said 50.7%, because the contract suite drives the Go binary from outside.
 `internal/web` is here for completeness; the FE thread owns it.
@@ -221,7 +221,7 @@ uncovered, since this ran on macOS.
 | Declarative TOML | `TestDeclarativeGolden`, `TestMatchesBun`, `TestKeepFormerSelections`; `TestCLIConfigDeclarative` **D** | Guarded |
 | Drizzle journal compatible | `TestEmbeddedMigrationsMatchDrizzle`, `TestFreshDatabaseJournalIsDrizzleCompatible`, `TestOpensTypeScriptDatabase` | Guarded |
 | `go_schema` stays 1; `model_placements` | `TestGoSchemaVersionForRollback`, `TestPlacementStore` | Guarded |
-| Rollback drill | `tools/placement-rollback-check.sh`, by hand | **GAP in CI** |
+| Rollback drill | `scripts/placement-rollback-check.sh`, by hand | **GAP in CI** |
 
 ### CLI and version
 
@@ -312,7 +312,7 @@ Removal is a follow-up PR after retirement, not part of this program.
 |---|---|
 | `go vet`, `-race`, gofmt with 1.26 | **Already in `go.yml`,** on macOS and Linux |
 | golangci-lint | None. `~/go/bin` has 1.63.4 (built with Go 1.23), too old for this code: the pinned config needs a current release |
-| Coverage report | `tools/coverage.sh`, this PR |
+| Coverage report | `scripts/coverage.sh`, this PR |
 | Fuzz tests | **None** |
 | Benchmarks | **None** |
 | Route table or OpenAPI tested against routes | **None** |
@@ -324,7 +324,7 @@ Removal is a follow-up PR after retirement, not part of this program.
 
 ```sh
 go test ./... -count=1                          # what go.yml runs, plus -race there
-LOCALBASE_CONTRACT_MODELS=<models/llm dir> tools/coverage.sh both
+LOCALBASE_CONTRACT_MODELS=<models/llm dir> scripts/coverage.sh both
 go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 go run golang.org/x/tools/cmd/deadcode@latest -test ./...
 ```

@@ -1,9 +1,9 @@
 #!/bin/bash
 # Does a real backend keep using more memory with every request? One bounded pass on a
 # real model, in a window the operator has granted:
-#   LOCALBASE_REAL_WINDOW=go tools/real-memory-check.sh <scratch dir>
+#   LOCALBASE_REAL_WINDOW=go scripts/real-memory-check.sh <scratch dir>
 # Rehearsal, with the fake backend and a stub for live /health, touching nothing live:
-#   tools/real-memory-check.sh --dry-run <scratch dir>
+#   scripts/real-memory-check.sh --dry-run <scratch dir>
 #
 # THE HYPOTHESIS IS UNSUPPORTED UNTIL THE RSS CURVE SHOWS IT. The gateway always passes
 # --cache-ram 2048, so a prompt cache filling at about 100 MiB a request would stop near
@@ -40,7 +40,7 @@ case "${1:-}" in
   *) DRY=0 ;;
 esac
 if [ $# -ne 1 ]; then
-  echo "usage: LOCALBASE_REAL_WINDOW=go tools/real-memory-check.sh <scratch dir>, or --dry-run <scratch dir>" >&2
+  echo "usage: LOCALBASE_REAL_WINDOW=go scripts/real-memory-check.sh <scratch dir>, or --dry-run <scratch dir>" >&2
   exit 2
 fi
 if [ "$DRY" = 0 ] && [ "${LOCALBASE_REAL_WINDOW:-}" != go ]; then
@@ -48,7 +48,7 @@ if [ "$DRY" = 0 ] && [ "${LOCALBASE_REAL_WINDOW:-}" != go ]; then
   exit 2
 fi
 cd "$(dirname "$0")/.." || exit 2
-. tools/disk-guard.sh
+. scripts/disk-guard.sh
 disk_guard real-memory-check
 SRC=$PWD
 mkdir -p "$1" || exit 2

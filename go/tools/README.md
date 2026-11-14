@@ -6,9 +6,9 @@ themselves.
 
 | Run from `go/` | What it does |
 |---|---|
-| `make soak` (`tools/soak.sh`) | A real gateway over fake backends, through memory phases, drain and restart |
+| `make soak` (`scripts/soak.sh`) | A real gateway over fake backends, through memory phases, drain and restart |
 | `make chaos` (`test/chaos`) | What breaks, and what a person sees when it does |
-| `make bench` (`tools/bench.sh`) | What the gateway adds per request and per token, against budgets |
+| `make bench` (`scripts/bench.sh`) | What the gateway adds per request and per token, against budgets |
 | `make e2e` (`test/browser/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
 | `go run ./tools/mutcheck <mutations.json>` | Breaks code on purpose and says whether the tests noticed. A mutation that doesn't compile is reported as that, never as a result |
 | `../scripts/bootstrap.sh golangci-lint gitleaks` | The lint and secret-scan tools at CI's versions, from `scripts/tools.pins`, into `../.cache/tools/bin`. Nothing fetched runs before its checksum matches. Then `../.cache/tools/bin/golangci-lint run --config .golangci.yml ./...` and `../.cache/tools/bin/gitleaks dir .. --config ../.gitleaks.toml` |
@@ -35,7 +35,7 @@ Keep 90 GB free on a development machine. A script, test or mutation run that ca
 files must refuse to start under that floor and must cap what it writes, because a timeout
 skips a test's cleanup. A mutation that disabled a size limit once left 136 GB behind.
 
-Source `tools/disk-guard.sh` and call `disk_guard` near the top of a bash script. It refuses
+Source `scripts/disk-guard.sh` and call `disk_guard` near the top of a bash script. It refuses
 under the floor and caps each file the script and its children write (64 GiB by default;
 `LOCALBASE_FILE_CAP_GB`). `LOCALBASE_DISK_FLOOR_GB` moves the floor, which is 5 GB in CI. A test
 server that sends without end must stop at a bound well above the limit it tests.

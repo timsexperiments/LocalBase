@@ -2,14 +2,14 @@
 # Runs tools/soak on a shared machine: its own session and process group, lower
 # priority, a stop on any signal and a hard watchdog, so no client or scratch
 # gateway can outlive a run. Arguments go to the soak (see tools/soak/main.go):
-#   tools/soak.sh -smoke            about 2 minutes
-#   tools/soak.sh -duration 30m     the full soak
-#   tools/soak.sh -smoke -race      against a race-detector gateway
+#   scripts/soak.sh -smoke            about 2 minutes
+#   scripts/soak.sh -duration 30m     the full soak
+#   scripts/soak.sh -smoke -race      against a race-detector gateway
 # LOCALBASE_SOAK_HARD_SECONDS overrides the watchdog (default 2700: 45 minutes).
 # LOCALBASE_TOOLS_CACHE says where the binary goes (default ~/.cache/localbase).
 set -u
 cd "$(dirname "$0")/.." || exit 2
-. tools/disk-guard.sh
+. scripts/disk-guard.sh
 disk_guard soak
 # Built to a fixed place and replaced by the next run, so there is nothing to clean up.
 bin=${LOCALBASE_TOOLS_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/localbase}/soak

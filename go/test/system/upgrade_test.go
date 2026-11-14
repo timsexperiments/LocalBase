@@ -375,7 +375,7 @@ func TestTheTestKeyNeedsItsTag(t *testing.T) {
 	}
 }
 
-// What a release carries, built with the release's own flags (tools/build.sh --goflags and
+// What a release carries, built with the release's own flags (scripts/build.sh --goflags and
 // --ldflags, stripped): with the test key's -X but no tag, the key's bytes aren't in it; tagged,
 // they are (the control). go version -m names the tag only for the tagged build. go tool nm finds
 // upgrade.testKey only in an unstripped tagged build (nm proves nothing on -s -w; the byte search
@@ -384,9 +384,9 @@ func TestTheReleaseShapeCarriesNoTestKey(t *testing.T) {
 	k := theKit(t)
 	script := func(flag string) string {
 		t.Helper()
-		out, err := exec.Command("../../tools/build.sh", flag).Output()
+		out, err := exec.Command("../../scripts/build.sh", flag).Output()
 		if err != nil {
-			t.Fatalf("tools/build.sh %s: %v", flag, err)
+			t.Fatalf("scripts/build.sh %s: %v", flag, err)
 		}
 		return strings.TrimSpace(string(out))
 	}

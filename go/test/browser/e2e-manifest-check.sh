@@ -10,7 +10,7 @@
 # Exit 0: it held. Exit 1: a gap went unnoticed, or a clean run had one. Exit 2: could not run.
 set -u
 cd "$(dirname "$0")/../.." || exit 2
-. tools/disk-guard.sh
+. scripts/disk-guard.sh
 disk_guard e2e-manifest-check
 command -v bun >/dev/null 2>&1 || { echo "e2e-manifest-check: needs bun" >&2; exit 2; }
 out=${LOCALBASE_E2E_SCRATCH:-${TMPDIR:-/tmp}}/localbase-e2e/manifest-check

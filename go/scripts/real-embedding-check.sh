@@ -2,9 +2,9 @@
 # What DESIGN §35.6 could not answer without a real embedding model: how much one input can hold,
 # how long batches take, whether vectors arrive normalized, whether a query prefix helps, and memory
 # before and after. One bounded pass, in a window the operator has granted:
-#   LOCALBASE_REAL_WINDOW=go tools/real-embedding-check.sh <scratch dir>
+#   LOCALBASE_REAL_WINDOW=go scripts/real-embedding-check.sh <scratch dir>
 # Rehearsal, with the fake backend and a stub for live /health, touching nothing live:
-#   tools/real-embedding-check.sh --dry-run <scratch dir>
+#   scripts/real-embedding-check.sh --dry-run <scratch dir>
 #
 # DOCUMENTED EXCEPTION TO "NEVER THE LIVE PORT". Inside a granted window only, the watcher may GET
 # http://127.0.0.1:2273/health every 3 s, and nothing else on the live port: no other path, no POST,
@@ -27,7 +27,7 @@
 # input can hold should not change, but memory and batch timing are not the default's. On the real
 # file, 2 slots at 16384 plan 3261 MiB (derived).
 #
-# Adapted from Reliability's tools/real-memory-check.sh.
+# Adapted from Reliability's scripts/real-memory-check.sh.
 # This script deletes nothing. It prints the paths to delete afterwards.
 set -u
 case "${1:-}" in
@@ -35,7 +35,7 @@ case "${1:-}" in
   *) DRY=0 ;;
 esac
 if [ $# -ne 1 ]; then
-  echo "usage: LOCALBASE_REAL_WINDOW=go tools/real-embedding-check.sh <scratch dir>, or --dry-run <scratch dir>" >&2
+  echo "usage: LOCALBASE_REAL_WINDOW=go scripts/real-embedding-check.sh <scratch dir>, or --dry-run <scratch dir>" >&2
   exit 2
 fi
 if [ "$DRY" = 0 ] && [ "${LOCALBASE_REAL_WINDOW:-}" != go ]; then

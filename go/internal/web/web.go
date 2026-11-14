@@ -31,7 +31,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
-//go:generate ../../tools/tailwind.sh
+//go:generate ../../scripts/tailwind.sh
 
 //go:embed css/theme.css
 var themeCSS []byte

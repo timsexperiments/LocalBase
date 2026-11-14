@@ -55,7 +55,7 @@ jobs:
             mode=(-compare "tools/bench/$name")
           fi
           code=0
-          tools/bench.sh "${mode[@]}" -out "$out" || code=$?
+          scripts/bench.sh "${mode[@]}" -out "$out" || code=$?
           case "$code" in
             0) ;;
             1) echo "::warning title=Bench regression::$(go env GOOS)/$(go env GOARCH) is slower than its baseline; see result.md in the artifact" ;;

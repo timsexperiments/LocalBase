@@ -1,5 +1,5 @@
 // Command covmerge merges Go coverage profiles and prints statement coverage
-// per package: what tools/coverage.sh reports. A block counts as covered when
+// per package: what scripts/coverage.sh reports. A block counts as covered when
 // any profile covered it.
 //
 //	go run ./tools/covmerge -o merged.out unit.out contract.out

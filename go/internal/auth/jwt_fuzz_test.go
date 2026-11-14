@@ -18,7 +18,7 @@ func (noNetwork) RoundTrip(*http.Request) (*http.Response, error) {
 }
 
 // A token is the first thing a stranger can send a gateway that accepts them. Nothing fuzzed can be
-// signed by this key, so nothing may be accepted. Plain `go test` runs the seeds, and tools/fuzz.sh
+// signed by this key, so nothing may be accepted. Plain `go test` runs the seeds, and scripts/fuzz.sh
 // fuzzes on demand.
 func FuzzJWKSVerify(f *testing.F) {
 	enc := base64.RawURLEncoding

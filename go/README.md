@@ -5,16 +5,16 @@ The Go rewrite of LocalBase. Start with [DESIGN.md](DESIGN.md).
 ```sh
 cd go
 go build -o local-base ./cmd/localbase       # one static binary, UI included
-tools/build.sh dist/local-base              # the reproducible release build, stamped
+scripts/build.sh dist/local-base              # the reproducible release build, stamped
 ./local-base --root /path/to/root serve --port 26410 --runtime-port-base 26411
 go test ./internal/...                        # unit tests (no models needed)
-tools/contract.sh -args -impl=go              # contract and system suites against Go
-tools/contract.sh -args -impl=both            # against TS and Go, plus differential checks
-tools/tailwind.sh                             # rebuild internal/web/static/app.css (commit it)
+scripts/contract.sh -args -impl=go              # contract and system suites against Go
+scripts/contract.sh -args -impl=both            # against TS and Go, plus differential checks
+scripts/tailwind.sh                             # rebuild internal/web/static/app.css (commit it)
 go generate ./internal/catalog ./internal/runtime  # re-sync catalog and runtime pins from the TS tree
 ```
 
-Tests and `tools/*-check.sh` take scratch ports from `LOCALBASE_TEST_PORTS` (`low-high`, default
+Tests and `scripts/*-check.sh` take scratch ports from `LOCALBASE_TEST_PORTS` (`low-high`, default
 `25000-25499`; CI uses `24000-29999`). Set it when something else on the machine uses that block.
 24173 and 25611-25613 are never used.
 
@@ -37,7 +37,7 @@ bun run go/tools/golden/llm-plans.ts <models/llm dir> > go/internal/runtime/test
 `--json --version`, `doctor` and the `gateway.started` log event also give the commit
 and date; the first three give the Go version too. `/health` stays the number alone.
 
-A release stamps these with `-ldflags` (`tools/build.sh` is the exact command):
+A release stamps these with `-ldflags` (`scripts/build.sh` is the exact command):
 
 ```sh
 -X github.com/timsexperiments/LocalBase/go/internal/version.Version=<version>
