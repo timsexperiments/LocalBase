@@ -104,29 +104,19 @@ func (s *Service) sdVideoCommand(life context.Context, t *Target, host string, p
 	if bin, err = filepath.Abs(bin); err != nil {
 		return nil, err
 	}
-	decoder := "--tae"
-	if rt.Mode == "s2v" || rt.Artifacts.Decoder.Kind == "vae" {
-		decoder = "--vae"
-	}
-	args := []string{"--diffusion-model", paths[0], "--t5xxl", paths[1], decoder, paths[2]}
-	if rt.Mode == "s2v" {
-		args = append(args, "--audio-encoder", paths[3])
-	}
 	o := rt.Qualification.LaunchOptions
-	if o.CPUOffload {
-		args = append(args, "--offload-to-cpu")
+	p := sdVideoPlan{mode: rt.Mode, decoderKind: rt.Artifacts.Decoder.Kind,
+		diffusion: paths[0], textEncoder: paths[1], decoder: paths[2],
+		cpuOffload: o.CPUOffload, flashAttention: o.DiffusionFlashAttention, vaeConvDirect: o.VAEConvDirect,
+		host: host, port: port}
+	if rt.Mode == "s2v" {
+		p.audioEncoder = paths[3]
 	}
-	if o.DiffusionFlashAttention {
-		args = append(args, "--diffusion-fa")
-	}
-	if o.VAEConvDirect {
-		args = append(args, "--vae-conv-direct")
-	}
-	args = append(args, "--listen-ip", host, "--listen-port", strconv.Itoa(port))
 	if s.d.Memory != nil && !s.d.Memory.Topology().Unified {
-		d := s.demand(t)
-		args = append(args, "--max-vram", jsNumber(float64(d.AcceleratorBytes)/float64(memory.GiB)))
+		p.discrete = true
+		p.acceleratorBytes = s.demand(t).AcceleratorBytes
 	}
+	args := sdVideoArgs(p)
 	env := os.Environ()
 	if goruntime.GOOS == "linux" {
 		if err := requireSdGPUContract(bin); err != nil {
@@ -171,4 +161,45 @@ func (s *Service) Config() *store.Config { return s.d.Config() }
 // BaseURL is where the service's backend listens.
 func (s *Service) BaseURL() string {
 	return "http://" + net.JoinHostPort(BackendHost(s.d.Host), strconv.Itoa(s.d.Port))
+}
+
+// sdVideoPlan is what the sd-server vid_gen arguments are made from.
+type sdVideoPlan struct {
+	mode                                          string // t2v | ti2v | s2v
+	decoderKind                                   string // vae | tae
+	diffusion, textEncoder, decoder, audioEncoder string
+	cpuOffload, flashAttention, vaeConvDirect     bool
+	host                                          string
+	port                                          int
+	// discrete: the device has its own accelerator memory, so the server is held to the
+	// demand's acceleratorBytes with --max-vram.
+	discrete         bool
+	acceleratorBytes int64
+}
+
+// sdVideoArgs is the sd-server vid_gen argv (TS buildSdVideoServerArgs). TestSDServerAcceptsVideoArgs
+// checks a pinned binary accepts it.
+func sdVideoArgs(p sdVideoPlan) []string {
+	decoder := "--tae"
+	if p.mode == "s2v" || p.decoderKind == "vae" {
+		decoder = "--vae"
+	}
+	args := []string{"--diffusion-model", p.diffusion, "--t5xxl", p.textEncoder, decoder, p.decoder}
+	if p.mode == "s2v" {
+		args = append(args, "--audio-encoder", p.audioEncoder)
+	}
+	if p.cpuOffload {
+		args = append(args, "--offload-to-cpu")
+	}
+	if p.flashAttention {
+		args = append(args, "--diffusion-fa")
+	}
+	if p.vaeConvDirect {
+		args = append(args, "--vae-conv-direct")
+	}
+	args = append(args, "--listen-ip", p.host, "--listen-port", strconv.Itoa(p.port))
+	if p.discrete {
+		args = append(args, "--max-vram", jsNumber(float64(p.acceleratorBytes)/float64(memory.GiB)))
+	}
+	return args
 }
