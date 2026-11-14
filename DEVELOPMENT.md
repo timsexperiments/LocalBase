@@ -59,7 +59,7 @@ sequenceDiagram
 
 ## The legacy TypeScript tree
 
-`src/` is the version Go replaced. It stays as a rollback path and as the source of the catalog and runtime pins that `go generate` copies, and the golden test data was recorded from it. See the retirement plan in `docs/typescript-retirement.md`.
+`src/` is the version Go replaced. It stays as a rollback path and as the source of the catalog that `go generate` copies, and the golden test data was recorded from it. The managed runtime manifest's home is `go/internal/runtime/managed-runtime-manifest.json`; the sync workflows also write the identical copy in `src/manager/`, which the runtime release helpers read until they move, and a test fails if the two differ. See the retirement plan in `docs/typescript-retirement.md`.
 
 ## CI
 
