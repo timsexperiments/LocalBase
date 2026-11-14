@@ -11,7 +11,7 @@ go test ./internal/...                        # unit tests (no models needed)
 scripts/contract.sh -args -impl=go              # contract and system suites against Go
 scripts/contract.sh -args -impl=both            # against TS and Go, plus differential checks
 scripts/tailwind.sh                             # rebuild internal/web/static/app.css (commit it)
-go generate ./internal/catalog ./internal/runtime  # re-sync catalog and runtime pins from the TS tree
+go generate ./internal/catalog                  # re-sync the catalog from the TS tree
 ```
 
 Tests and `scripts/*-check.sh` take scratch ports from `LOCALBASE_TEST_PORTS` (`low-high`, default
