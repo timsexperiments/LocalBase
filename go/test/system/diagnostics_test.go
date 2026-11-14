@@ -144,11 +144,6 @@ var manifestMasks = []valueMask{
 	{name: "manifest hardware", match: func(p string) bool {
 		return slices.Contains([]string{".hardware.data.os", ".hardware.data.cpu", ".hardware.data.gpu", ".hardware.data.memoryGb", ".hardware.data.vramGb"}, p)
 	}},
-	// Each model's fit: internal/diagnostics takes it from DetectSpecs' GPU memory, as the
-	// "diagnostics fit" mask says of the human lines.
-	{name: "manifest fit", match: func(p string) bool {
-		return strings.HasPrefix(p, ".models.data.models[") && (strings.HasSuffix(p, ".memory.systemMemoryGb") || strings.HasSuffix(p, ".memory.verdict"))
-	}},
 	// Whether the user's service manager (launchd, systemd --user) answers is the session's, and
 	// so is what it reports: the state ("unknown" where no manager answers, as in a container,
 	// "not_installed" where one does) and the restart count (none without a manager, 0 with one).

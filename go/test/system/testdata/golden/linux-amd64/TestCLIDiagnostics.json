@@ -18,10 +18,7 @@
       ],
       "code": 0,
       "stdout": "{\"data\":{\"archive\":{\"bytes\":\"\u003cbytes\u003e\",\"entries\":2,\"path\":\"\u003ctmp\u003e/003/go.zip\"}},\"ok\":true}\n",
-      "stderr": "Read a copy of this root's database, as it stood just now.\nCreated diagnostics bundle: \u003ctmp\u003e/003/go.zip\nService stderr: 25 bytes captured at \u003croot\u003e/logs/service-stderr.log. It holds unredacted gateway crash output, so the bundle records only its size; review it before sharing.\nCatalog feed: off\nCatalog file skipped (user): broken.json: The patched entry is invalid: storageGb: Invalid input: expected number, received string\nMemory for qwen3.5-4b-q4_k_m: 5 GB (measured), \u003chost\u003e\nMemory for whisper-base-q8_0: 1 GB (estimate), \u003chost\u003e\nCatalog trust for whisper-base-q8_0: modified (user tier; changed repositoryRevision, notes)\nMemory for dreamshaper-8-lcm: 5 GB (measured), \u003chost\u003e\n",
-      "masks": [
-        "diagnostics fit"
-      ]
+      "stderr": "Read a copy of this root's database, as it stood just now.\nCreated diagnostics bundle: \u003ctmp\u003e/003/go.zip\nService stderr: 25 bytes captured at \u003croot\u003e/logs/service-stderr.log. It holds unredacted gateway crash output, so the bundle records only its size; review it before sharing.\nCatalog feed: off\nCatalog file skipped (user): broken.json: The patched entry is invalid: storageGb: Invalid input: expected number, received string\nMemory for qwen3.5-4b-q4_k_m: 5 GB (measured), fits\nMemory for whisper-base-q8_0: 1 GB (estimate), fits\nCatalog trust for whisper-base-q8_0: modified (user tier; changed repositoryRevision, notes)\nMemory for dreamshaper-8-lcm: 5 GB (measured), fits\n"
     },
     {
       "args": [
