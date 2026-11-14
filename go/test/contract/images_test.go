@@ -69,9 +69,9 @@ func imageForm(parts ...imgPart) (string, string) {
 	return b.String(), w.FormDataContentType()
 }
 
-// TestDifferentialImageRejections sends invalid image generation and edit requests; none reaches a
+// TestImageRejections sends invalid image generation and edit requests; none reaches a
 // backend.
-func TestDifferentialImageRejections(t *testing.T) {
+func TestImageRejections(t *testing.T) {
 	tgs := pinnedGateways(t)
 	harness.LogFreeMemoryOnFailure(t)
 	post := func(path, ctype, body string) map[string]*harness.Resp {
@@ -229,11 +229,11 @@ func named(field, filename string, b []byte) imgPart {
 	return imgPart{name: field, filename: filename, file: b, isFile: true}
 }
 
-// TestDifferentialRetrySemantics: clients (device workers, coding agents)
+// TestRetrySemantics: clients (device workers, coding agents)
 // retry on 503 with Retry-After. A start that fails transiently must keep
 // that contract every time it is asked again; a failure
 // that needs someone to act answers its real 4xx without Retry-After.
-func TestDifferentialRetrySemantics(t *testing.T) {
+func TestRetrySemantics(t *testing.T) {
 	if os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
 		t.Skip("needs LOCALBASE_CONTRACT_RUNTIMES (a real sd-server that fails to load placeholder weights)")
 	}

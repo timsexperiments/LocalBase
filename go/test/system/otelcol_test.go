@@ -172,7 +172,7 @@ func readCollectorFile(t *testing.T, path string) *collector {
 
 // TestRealCollector: the export reaches a real collector, which parses a server span for each
 // request and the request records, and no export failure is reported. The trees themselves are
-// pinned by TestDifferentialOTLP (until step 7 they were compared with TS's here too).
+// pinned by TestOTLPExport (until step 7 they were compared with TS's here too).
 func TestRealCollector(t *testing.T) {
 	bin := os.Getenv("LOCALBASE_CONTRACT_OTELCOL")
 	if bin == "" {

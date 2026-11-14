@@ -15,7 +15,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// The pinned tests here, TestDifferentialModels and TestDifferentialModelMetadata, compared Go's
+// The pinned tests here, TestModelsListPinned and TestModelMetadata, compared Go's
 // model metadata with TS's and tested nothing else, so step 7's R3a pinned Go's answers as value
 // goldens (harness.PinValues; harness.Pins says where) while TS still agreed, and R3b removed TS.
 //

@@ -7,8 +7,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
-// TestDifferentialModelDiscoveryRejections: every rejection that needs no Hub request.
-func TestDifferentialModelDiscoveryRejections(t *testing.T) {
+// TestModelDiscoveryRejections: every rejection that needs no Hub request.
+func TestModelDiscoveryRejections(t *testing.T) {
 	tgs := pinnedGateways(t)
 	const path = "/_localbase/model-discovery"
 	post := func(key func(*harness.Target) string, body string) map[string]*harness.Resp {

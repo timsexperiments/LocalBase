@@ -116,7 +116,7 @@ uncovered, since this ran on macOS.
 | Behaviour | Guard | Status |
 |---|---|---|
 | FIFO across a switch; full and timeout | `TestFIFOAcrossSwitch`, `TestQueueFullAndTimeout` | Guarded |
-| Status and `Retry-After` mapping | `TestRuntimeErrorRetrySemantics`; `TestDifferentialRetrySemantics` **R** | Guarded |
+| Status and `Retry-After` mapping | `TestRuntimeErrorRetrySemantics`; `TestRetrySemantics` **R** | Guarded |
 | Cancelling while queued (LLM) | `TestRunCancel` | Guarded |
 | Cancelling while queued (media services) | `Service.remove`, `abandon` 0% | **GAP** |
 
@@ -166,7 +166,7 @@ uncovered, since this ran on macOS.
 | User `catalog.d`, former entries | `TestUserLayer`, `TestFormer*`, `TestUserFileThatPins*`, and others | Guarded |
 | Remote feed and annotations | `TestParseFeedGolden`, `TestParseAnnotationsGolden`, `TestFeedSchedulerReloadsCatalog`; `TestCLIFeed` **D** | Guarded |
 | Discovery | `TestDiscoveryGolden`, `TestModelDiscoveryEndToEnd`; `discoveryInstall` 0% | Partial |
-| Install consent | `TestDifferentialModelManagement` | Guarded |
+| Install consent | `TestModelManagement` | Guarded |
 | Interrupted installs | `TestInstallInterruptedByGatewayStop` | Guarded |
 | **Model download: checksum, framing, resume** | `internal/install` `download`, `checkFraming`, `DownloadURL` 0%, with no test file | **GAP** |
 
@@ -193,8 +193,8 @@ uncovered, since this ran on macOS.
 
 | Behaviour | Guard | Status |
 |---|---|---|
-| Speech validation and truncation flag | `TestDifferentialSpeechRejections`, `TestSpeechTruncation*` | Guarded |
-| Image validation, seed echo | `TestDifferentialImageRejections`, `TestImageSeed*`, `TestValidatePNG`, `TestValidateJPEG` | Guarded |
+| Speech validation and truncation flag | `TestSpeechRejections`, `TestSpeechTruncation*` | Guarded |
+| Image validation, seed echo | `TestImageRejections`, `TestImageSeed*`, `TestValidatePNG`, `TestValidateJPEG` | Guarded |
 | **Transcription response normalization** | `normalizeTranscriptionJSON`, `validTranscription` run only in `TestTranscriptionReal` **R**: no fake whisper | **GAP** |
 
 ### Observability
@@ -205,7 +205,7 @@ uncovered, since this ran on macOS.
 | **JSONL rotation** | `rotate` 0% | **GAP** |
 | **Service stderr bound** | `BoundServiceStderr` 0%; `InspectServiceStderr` via `TestCLIDiagnostics` **D** | **GAP** |
 | Logs CLI | `TestCLILogs` **D** (Go's filters checked on their own since step 7's R3a), `TestTSReadsGoLogs` **D** (retired with TS in R3a); `Follow`, `Human` 0% | Partial |
-| OTLP | `TestExportToCollector`, `TestRatioSamplerGolden`, `TestShutdownWithHungCollector`, and others; `TestDifferentialOTLP` **D**; `TestRealCollector` **R** | Guarded |
+| OTLP | `TestExportToCollector`, `TestRatioSamplerGolden`, `TestShutdownWithHungCollector`, and others; `TestOTLPExport` **D**; `TestRealCollector` **R** | Guarded |
 | Diagnostics bundle | `TestCLIDiagnostics` **D**, `TestRunCheckpointsStayOutOfBundles` | Guarded, mostly by hand |
 | Error kinds on requests | `TestHTTPRequestLogsErrorKind` | Guarded |
 
@@ -283,7 +283,7 @@ excluded (the FE thread owns it).
 | `TestUnloadScope` | once, temp-dir cleanup only; not reproduced | Recorded; `scratchDir` will explain the next one |
 | `TestRunOwnership` | once under `-race`, at about 11:20 UTC on 2026-11-03: `status failed, want [completed]`, whole output in that line. It passed 5 of 5 and a full package run straight after | Recorded, cause unknown: the 10 s is `waitStatus` polling a run that had already failed, not a deadline on the run, and the helper didn't print why. It now stops at a finished status and prints the run's error, so the next one will say |
 | `TestRuntimePortBaseServes` | once under `-race`, a 503 from `/v1/chat/completions`, at about 10:15-10:16 UTC on 2026-11-03; passed 5 of 5 straight after | Fixed by #791: its `freeRun` scanned 25300-25490 outside `testutil`'s per-process parts, so another test process's fake backend could take the LLM's port before it started; it now uses `testutil.FreeRun`. Seen again in Go's 4d-5 gate (2026-11-10) |
-| `TestEmbeddings`, `TestDifferentialModelMetadata`, `TestDifferentialImageRejections` | **D** or **R**: memory refusals while other models are loaded | Load-dependent; the image test logs free memory on failure |
+| `TestEmbeddings`, `TestModelMetadata`, `TestImageRejections` | **D** or **R**: memory refusals while other models are loaded | Load-dependent; the image test logs free memory on failure |
 | `TestBackendOutputRedactsURLs` | Twice on macOS CI, with an empty log after its full 2 s wait: job 125685743835 (#506 at fad49b3b) and job 125706211906 (#521 at fabba49a) | A real bug, not a flake: a backend's last output is lost when it exits. Reproduced by `TestProcessOutputSurvivesItsExit` (#519); the fix, #522, is in the integration tree. Remove this row when it merges |
 | `chat-runs-check`, first chat section (detached runs), `pill on Models` | `FAIL pill on Models: {"hidden":true,"href":"/app/chat","text":"Generating…"}`, after `ok a run is in progress: completed:Chat`. The script then stops with a TypeError on the next `nav(pill.href)`, so nothing after it runs. 1 of 4 runs on Chrome for Testing 156 (headless, macOS, fake backends) at the same commit, 649db171 (never pushed); it hasn't failed on Chrome 114, and 590973e7 and 8b917d1d passed on 156 | Intermittent, cause unknown. Reported by the UI-B thread; the section is FE's |
 | `chat-runs-check`, "announces the change once" and "another tool's tray does not" | Fail on every rerun on a used gateway, on Chrome 114 and 156. With a fresh gateway: 190 of 190 on both browsers, three runs | Explained, not a flake: the script needs a new gateway each run, and its header says so |

@@ -294,9 +294,9 @@ func TestChatCompletion(t *testing.T) {
 	})
 }
 
-// TestDifferentialModels pins /v1/models on the golden fixture (it was compared with TS's until
+// TestModelsListPinned pins /v1/models on the golden fixture (it was compared with TS's until
 // step 7).
-func TestDifferentialModels(t *testing.T) {
+func TestModelsListPinned(t *testing.T) {
 	gw := pinnedTarget(t)
 	// A measured peak varies from process to process: its presence is pinned.
 	b := models(t, gw)
@@ -385,9 +385,9 @@ func schemaCase(schema string) string {
 	return `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
 }
 
-// TestDifferentialRejections sends requests that fail validation to every target and requires an
+// TestRejections sends requests that fail validation to every target and requires an
 // error envelope for each. (Until step 7 TS and Go had to answer each the same.)
-func TestDifferentialRejections(t *testing.T) {
+func TestRejections(t *testing.T) {
 	tgs := pinnedGateways(t)
 	for _, c := range rejectionCases {
 		for _, tg := range tgs {
@@ -426,9 +426,9 @@ func TestEmbeddings(t *testing.T) {
 	})
 }
 
-// TestDifferentialModelMetadata pins /_localbase/models on the golden fixture, apart from live
+// TestModelMetadata pins /_localbase/models on the golden fixture, apart from live
 // host memory and runtime queue state (it was compared with TS's until step 7).
-func TestDifferentialModelMetadata(t *testing.T) {
+func TestModelMetadata(t *testing.T) {
 	gw := pinnedTarget(t)
 	volatile := func(p string) bool {
 		// device.placement (CPU/GPU placement, DESIGN §20) was Go's alone, so R3a's goldens leave it out.

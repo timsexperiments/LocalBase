@@ -10,10 +10,10 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
-// TestDifferentialModelManagement runs /_localbase/model-management: the catalog state, every
+// TestModelManagement runs /_localbase/model-management: the catalog state, every
 // rejection, enable/activate/disable, uninstall, and an install polled to completion. (Until step 7
 // it compared each answer with TS's.)
-func TestDifferentialModelManagement(t *testing.T) {
+func TestModelManagement(t *testing.T) {
 	tgs := pinnedGateways(t)
 	const path = "/_localbase/model-management"
 	post := func(key func(*harness.Target) string, body string) map[string]*harness.Resp {
