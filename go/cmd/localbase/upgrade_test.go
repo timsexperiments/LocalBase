@@ -107,13 +107,13 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 	repo := testutil.RepoRoot(t)
 	goflagsTags := regexp.MustCompile(`GOFLAGS[^\n]*-tags`)
-	for _, p := range []string{"go/tools/build.sh", "scripts/release/build.sh", ".github/workflows/release-go.yml"} {
+	for _, p := range []string{"go/scripts/build.sh", "scripts/release/build.sh", ".github/workflows/release-go.yml"} {
 		b, err := os.ReadFile(filepath.Join(repo, p))
 		if err != nil {
 			t.Fatalf("the release build's %s: %v", p, err)
 		}
 		refused := []string{"testKey", "localbase_testkey", "-tags"}
-		if p != "go/tools/build.sh" { // its comment says the rehearsal reads its flags; below, it builds only the command
+		if p != "go/scripts/build.sh" { // its comment says the rehearsal reads its flags; below, it builds only the command
 			refused = append(refused, "upgrade-rehearsal")
 		}
 		for _, word := range refused {
@@ -124,7 +124,7 @@ func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 		if goflagsTags.Match(b) {
 			t.Errorf("%s sets tags through GOFLAGS", p)
 		}
-		if p == "go/tools/build.sh" && (!strings.Contains(string(b), "./cmd/localbase") || strings.Contains(string(b), "./tools/")) {
+		if p == "go/scripts/build.sh" && (!strings.Contains(string(b), "./cmd/localbase") || strings.Contains(string(b), "./tools/")) {
 			t.Errorf("%s builds something other than ./cmd/localbase", p)
 		}
 	}

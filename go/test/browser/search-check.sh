@@ -1,5 +1,5 @@
 #!/bin/sh
-. "$(dirname "$0")/../../tools/test-ports.sh"
+. "$(dirname "$0")/../../scripts/test-ports.sh"
 # Search in Studio (DESIGN §35) in headless Chrome, against a --no-auth scratch gateway whose models
 # are the fake llama-server, so no weights load. Two embedding models are selected, so the page offers
 # a choice. One way (scratch root and port only):

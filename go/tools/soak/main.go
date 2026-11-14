@@ -8,7 +8,7 @@
 //	make soak-smoke      about 2 minutes
 //	make soak-race       the smoke against a race-detector gateway
 //
-// Use tools/soak.sh rather than running it directly: that gives it its own
+// Use scripts/soak.sh rather than running it directly: that gives it its own
 // session and a hard stop, so nothing outlives a run on a shared machine.
 package main
 

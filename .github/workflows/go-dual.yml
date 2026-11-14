@@ -56,7 +56,7 @@ jobs:
           LOCALBASE_CONTRACT_MODELS: ${{ runner.temp }}/contract-models
           LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
           LOCALBASE_TEST_PORTS: 26000-26499
-        run: tools/contract.sh -args -impl=both
+        run: scripts/contract.sh -args -impl=both
       - name: Keep the failing contract run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

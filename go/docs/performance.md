@@ -10,7 +10,7 @@ make bench-compare   # the same, then compares with the baseline for this platfo
 ```
 
 Run from `go/`. Results go to a new directory under `$TMPDIR/localbase-bench`, or
-`-out <dir>` through `tools/bench.sh`. Fake backends only, ports 29000-29499.
+`-out <dir>` through `scripts/bench.sh`. Fake backends only, ports 29000-29499.
 
 ## Baseline
 
@@ -77,7 +77,7 @@ platform is reported as not comparable, and a platform with none only reports th
 It is meant for a nightly job, not for pull requests: the figures depend on the machine and
 on what else it is doing. Budgets are recorded in `tools/bench/compare.go` and shown in the
 table, but only the comparison fails a run. To record a new baseline after an intended
-change, run `tools/bench.sh -write-baseline tools/bench/baseline-<os>-<arch>.json` on the
+change, run `scripts/bench.sh -write-baseline tools/bench/baseline-<os>-<arch>.json` on the
 same kind of machine and commit it with the reason.
 
 ## Not measured

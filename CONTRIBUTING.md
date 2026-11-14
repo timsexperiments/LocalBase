@@ -38,7 +38,7 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 
 `make hooks` optionally runs the fast checks before each commit.
 
-`tools/tailwind.sh` has pinned CSS tools for macOS ARM64 and Linux x86-64 only, so `make ui` won't run on other platforms.
+`scripts/tailwind.sh` has pinned CSS tools for macOS ARM64 and Linux x86-64 only, so `make ui` won't run on other platforms.
 
 ## Linting
 
@@ -94,7 +94,7 @@ The built-in catalog is deliberately small: models tested on real hardware, with
 
 1. Add a template in `go/internal/web/templates/` and a handler in `go/internal/web/`.
 2. Register it in `go/internal/web/web.go`: `u.need("<permission>", handler)` for reads, and `u.mutating("<permission>", handler)` for changes, which adds the CSRF check.
-3. If you changed Tailwind classes, run `go/tools/tailwind.sh` and commit `app.css`.
+3. If you changed Tailwind classes, run `go/scripts/tailwind.sh` and commit `app.css`.
 4. Add browser logic as small files in `go/internal/web/static/js/`, with tests in `go/tools/jstest/`. There's no Node or npm build. Product copy names no specific models.
 
 To see pages with fixture data, run from `go/`:
@@ -112,7 +112,7 @@ LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI -arg
 - **A test that sends more than a few thousand requests** goes through `testutil.Flood`, which keeps its connections and stops itself if it can't. Closed connections hold local ports that everything on the machine shares, so a flood that opens one per request can make other programs' connections fail.
 - **Goldens** in `testdata/` are generated from the TypeScript code by `go/tools/golden/`. Don't edit them by hand.
 
-For a parser of anything from outside, add a fuzz target to `go/tools/fuzz.sh`. `go test` runs its seeds, and the script searches for new inputs on demand.
+For a parser of anything from outside, add a fuzz target to `go/scripts/fuzz.sh`. `go test` runs its seeds, and the script searches for new inputs on demand.
 
 ## Community
 

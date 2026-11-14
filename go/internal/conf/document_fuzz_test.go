@@ -7,7 +7,7 @@ import (
 )
 
 // The configuration document is a file a person edits. Plain `go test` runs the seeds, and
-// tools/fuzz.sh fuzzes on demand.
+// scripts/fuzz.sh fuzzes on demand.
 func FuzzParseDocument(f *testing.F) {
 	cat, err := catalog.Load("")
 	if err != nil {

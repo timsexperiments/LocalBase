@@ -15,7 +15,7 @@ make soak-race      # one cycle against a race-detector gateway
 
 Run these from `go/`. Each writes `result.md` (one page) and `result.json` to a
 new directory under `$TMPDIR/localbase-soak`, or `-out <dir>` through
-`tools/soak.sh`, and exits non-zero on any violation. A failing run keeps its
+`scripts/soak.sh`, and exits non-zero on any violation. A failing run keeps its
 scratch root and logs and prints where they are.
 
 ### What a cycle does
@@ -184,7 +184,7 @@ replaces a model's real demand and admission decides the same on macOS and Linux
 - A scratch directory holds everything. `HOME` points into it, proxies point
   nowhere, and the caller's `LOCALBASE_*` and token settings are removed.
 - The tools refuse a scratch path inside the installed root.
-- `tools/soak.sh` gives a run its own session, lower priority, a stop on any
+- `scripts/soak.sh` gives a run its own session, lower priority, a stop on any
   signal and a watchdog. A watcher process stops the gateway if the harness dies.
 
 ## Linux
@@ -233,7 +233,7 @@ loading it, and stop if it is over the agreed size: a model's default plan can b
 larger than its file (this model's was 5.3 GiB with 4 slots and a 32768 context).
 
 **Does a real backend use more memory with every request?** On a Mac, up to its prompt cache's
-limit, and then no. Measured on 2026-11-02 with `tools/real-memory-check.sh`: `llama-server` 0.7.0-dev
+limit, and then no. Measured on 2026-11-02 with `scripts/real-memory-check.sh`: `llama-server` 0.7.0-dev
 (build 11671, `ba3c05f71`), Metal, `qwen2.5-coder-1.5b-instruct-q4_k_m`, context 8192, one slot, 200
 sequential requests of about 2,400 tokens, each a new prompt, with 8 tokens out. All returned 200.
 
@@ -310,7 +310,7 @@ Exit 0 means everything passed, exit 1 means findings about the pages (in `resul
 exit 2 means the suite itself could not run, exit 4 means it ran and something it should have checked has
 no record of running, exit 5 means a journey failed or the gateway panicked or logged a key, and exit 3
 means it refused to start under the free-disk floor
-(`tools/disk-guard.sh`).
+(`scripts/disk-guard.sh`).
 
 **On macOS,** Chrome starts with `--use-mock-keychain --password-store=basic`, whichever Chrome it is,
 so it never asks the Keychain for anything and cannot put a prompt on the screen. A test requires both

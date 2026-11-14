@@ -7,7 +7,7 @@
 # stays. A stopped run leaves its scratch and results behind, and this prints where.
 set -u
 cd "$(dirname "$0")/../.." || exit 2
-. tools/disk-guard.sh
+. scripts/disk-guard.sh
 disk_guard e2e-kill-check
 cases=${*:-sigterm sigkill deadline}
 parent=${LOCALBASE_E2E_SCRATCH:-${TMPDIR:-/tmp}}

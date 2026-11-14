@@ -8,7 +8,7 @@ import (
 )
 
 // FuzzStructuredOutput feeds arbitrary schemas and answers to what a chat key can reach. Plain
-// `go test` runs the seeds; tools/fuzz.sh fuzzes on demand. It must never panic or overflow the
+// `go test` runs the seeds; scripts/fuzz.sh fuzzes on demand. It must never panic or overflow the
 // stack, whatever it accepts.
 func FuzzStructuredOutput(f *testing.F) {
 	a := `{"$ref":"#/$defs/a"}`

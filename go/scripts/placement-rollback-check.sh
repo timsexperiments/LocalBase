@@ -7,7 +7,7 @@
 # loopback scratch ports. No inference is requested; TS loads the active
 # model (the cloned 1.5B, about 1 GB) at start.
 #
-#   LBGO_PREV_GO=<previous Go binary> LBGO_TS=<TS 0.1.0 binary> tools/placement-rollback-check.sh
+#   LBGO_PREV_GO=<previous Go binary> LBGO_TS=<TS 0.1.0 binary> scripts/placement-rollback-check.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d /private/tmp/lbgo-rbcheck.XXXXXX)

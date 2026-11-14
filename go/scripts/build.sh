@@ -3,11 +3,11 @@
 # built here has the same bytes as the one CI ships, given the same commit, Go version and
 # target. Run from anywhere; the binary goes to $1 (default ./local-base).
 #
-#   tools/build.sh [output]                     for this machine
-#   GOOS=linux GOARCH=arm64 tools/build.sh out  for another target
-#   VERSION=0.3.0 tools/build.sh out            a version other than the source's
-#   tools/build.sh --version                    print the version in the source
-#   tools/build.sh --goflags | --ldflags | --env
+#   scripts/build.sh [output]                     for this machine
+#   GOOS=linux GOARCH=arm64 scripts/build.sh out  for another target
+#   VERSION=0.3.0 scripts/build.sh out            a version other than the source's
+#   scripts/build.sh --version                    print the version in the source
+#   scripts/build.sh --goflags | --ldflags | --env
 #                                               print what a build passes to go build: the flags,
 #                                               -ldflags (for VERSION, if set) and environment.
 #                                               tools/upgrade-rehearsal builds from these.

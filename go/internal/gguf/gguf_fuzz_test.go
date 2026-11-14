@@ -6,7 +6,7 @@ import (
 )
 
 // FuzzGGUFHeader feeds arbitrary bytes to the header and tensor table reader. Plain
-// `go test` runs the seeds; tools/fuzz.sh fuzzes on demand. It must never panic,
+// `go test` runs the seeds; scripts/fuzz.sh fuzzes on demand. It must never panic,
 // overflow the stack or keep more than its budget.
 func FuzzGGUFHeader(f *testing.F) {
 	f.Add([]byte{})

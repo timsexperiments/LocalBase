@@ -34,8 +34,8 @@ These are computed by the real admission code on a simulated host, not measured 
 Nobody has tested this on a real 8 or 16 GiB Mac, and any new default needs that first. From `go/`:
 
 ```sh
-tools/reserve-check.sh sample 300     # read-only, during normal use with a browser and apps open
-tools/reserve-check.sh probe          # allocates memory in steps; save your work first
+scripts/reserve-check.sh sample 300     # read-only, during normal use with a browser and apps open
+scripts/reserve-check.sh probe          # allocates memory in steps; save your work first
 ```
 
 `probe` refuses to start if LocalBase or a model runtime is running, or on more than 24 GiB. It stops at 4 GiB free, at any macOS pressure above normal, at half the machine's memory, or after 5 minutes. To test closer to a line, pass a lower floor such as `probe 3`, at your own judgement.

@@ -16,7 +16,7 @@ bootstrap: ## Install the pinned tools into .cache/tools, verified by checksum
 	scripts/bootstrap.sh
 
 build: ## Build go/local-base, as the release builds it
-	go/tools/build.sh go/local-base
+	go/scripts/build.sh go/local-base
 
 run: build ## Run a gateway on a throwaway root in .scratch (PORT=26400, runtimes on 26410-26414)
 	mkdir -p .scratch
@@ -30,11 +30,11 @@ race: ## Unit tests with the race detector, as CI runs them
 	cd go && go test -race ./internal/... ./cmd/...
 
 contract: ## HTTP contract suite against the Go gateway
-	cd go && tools/contract.sh -args -impl=go
+	cd go && scripts/contract.sh -args -impl=go
 
 ui: ## Compiled CSS is current, and the browser JavaScript tests pass (needs Bun)
 	bun install --frozen-lockfile
-	cd go && tools/tailwind.sh --check
+	cd go && scripts/tailwind.sh --check
 	bun test go/tools/jstest
 
 lint: ## golangci-lint, as CI runs it. Needs make bootstrap

@@ -1,5 +1,5 @@
 #!/bin/sh
-. "$(dirname "$0")/../../tools/test-ports.sh"
+. "$(dirname "$0")/../../scripts/test-ports.sh"
 # axe-core in desktop Chrome (headless) against a running LocalBase UI
 # (DESIGN §17.9): chat, the model picker, the history drawer, generation
 # controls, Admin, the Lab and the other pages, at 1280 and 390 px, light

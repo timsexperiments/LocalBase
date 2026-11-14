@@ -7,7 +7,7 @@ import (
 )
 
 // FuzzInspectVariant inspects arbitrary bytes under a file name that claims a split
-// set. Plain `go test` runs the seeds; tools/fuzz.sh fuzzes on demand. Whatever the
+// set. Plain `go test` runs the seeds; scripts/fuzz.sh fuzzes on demand. Whatever the
 // file says, inspection stays within its limits.
 func FuzzInspectVariant(f *testing.F) {
 	f.Add([]byte{})

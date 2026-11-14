@@ -2,8 +2,8 @@
 # Fuzz the parsers for a bounded time. `go test` already runs each target's seed
 # corpus; this script is the on-demand search for new inputs.
 #
-#   tools/fuzz.sh            # every target for FUZZTIME (default 60s)
-#   FUZZTIME=10m tools/fuzz.sh
+#   scripts/fuzz.sh            # every target for FUZZTIME (default 60s)
+#   FUZZTIME=10m scripts/fuzz.sh
 #
 # A failing input is written to the target's testdata/fuzz directory: commit it with the fix.
 set -eu

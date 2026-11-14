@@ -1,5 +1,5 @@
 #!/bin/bash
-. "$(dirname "$0")/test-ports.sh"
+. "$(dirname "$0")/../scripts/test-ports.sh"
 # M7 rehearsal, service steps (DESIGN §17.2), on a copy made by
 # `tools/shadow.sh copy`: Go installed as a launchd service under the
 # copy's own throwaway label, scratch ports, smoke, the client replay and

@@ -3,7 +3,7 @@
 # same image as test/platform/systemd-check.sh, then the container and image are removed. No published
 # ports, no GPU, no network use by the drill.
 #
-#   tools/upgrade-rehearsal-systemd.sh       # from go/, needs Docker
+#   scripts/upgrade-rehearsal-systemd.sh       # from go/, needs Docker
 #
 # LBUR_IMAGE=<image> uses an image already built, and leaves it there.
 set -uo pipefail

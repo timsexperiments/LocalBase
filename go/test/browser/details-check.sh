@@ -1,5 +1,5 @@
 #!/bin/sh
-. "$(dirname "$0")/../../tools/test-ports.sh"
+. "$(dirname "$0")/../../scripts/test-ports.sh"
 # Where each <details> really lands, in one browser, for comparing browsers (DESIGN §27.5). Browsers
 # box a <details> differently, so a layout can pass in one and be wrong in another. Run it once per
 # browser, then compare. See test/browser/details-check/README.md.

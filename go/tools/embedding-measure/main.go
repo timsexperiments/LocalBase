@@ -1,6 +1,6 @@
 // Command embedding-measure answers what DESIGN §35.6 could not, against a running gateway: how
 // much one input can hold, how long batches take, whether vectors arrive normalized, and whether a
-// query prefix helps. tools/real-embedding-check.sh runs it, and it never starts anything itself.
+// query prefix helps. scripts/real-embedding-check.sh runs it, and it never starts anything itself.
 //
 //	embedding-measure -base http://127.0.0.1:28410 -model <id> -out results.json
 package main

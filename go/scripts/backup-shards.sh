@@ -3,7 +3,7 @@
 # shards and BACKUP_FILE_TESTS together run every test in the package exactly once. go.yml's
 # backup-race jobs run it; it reads no list of its own, so a new test lands in a shard by itself.
 #
-#   tools/backup-shards.sh <shard> <count>     shard counts from 0
+#   scripts/backup-shards.sh <shard> <count>     shard counts from 0
 #
 # The tests BACKUP_FILE_TESTS names run without -race elsewhere, and there must be exactly
 # BACKUP_FILE_COUNT of them. The rest are sorted by name and dealt round robin. Each shard's
@@ -11,8 +11,8 @@
 # in no shard or in two, or a package holding fewer tests than BACKUP_TEST_FLOOR, stops every shard.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-shard=${1:?usage: tools/backup-shards.sh <shard> <count>}
-count=${2:?usage: tools/backup-shards.sh <shard> <count>}
+shard=${1:?usage: scripts/backup-shards.sh <shard> <count>}
+count=${2:?usage: scripts/backup-shards.sh <shard> <count>}
 : "${BACKUP_FILE_TESTS:?}" "${BACKUP_FILE_COUNT:?}" "${BACKUP_TEST_FLOOR:?}"
 pkg=./internal/backup
 fail() { echo "backup-shards: $*" >&2; exit 1; }

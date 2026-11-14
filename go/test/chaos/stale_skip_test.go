@@ -13,7 +13,7 @@ import (
 )
 
 // A fix can reach a tree while its pull request is still open. Then the test of it goes on
-// skipping, CI stays green without running it, and tools/known-bugs-check.sh, which reads the
+// skipping, CI stays green without running it, and scripts/known-bugs-check.sh, which reads the
 // pull request's state, has nothing to say. So a skip has to be true: after a clean run each
 // skipped test runs again with its skip off, and one that passes fails the run.
 var skips struct {
@@ -62,7 +62,7 @@ const stalePlant = "LOCALBASE_CHAOS_STALE_PLANT"
 // The check can fail, and leaves alone what it should: this test runs itself with a skip whose
 // test passes, which must fail the run, and with one whose test still fails, which must not.
 func TestStaleSkipFailsTheRun(t *testing.T) {
-	// Called pr so tools/known-bugs-check.sh, which reads the source, takes these for the helper.
+	// Called pr so scripts/known-bugs-check.sh, which reads the source, takes these for the helper.
 	const pr = noPRYet
 	switch os.Getenv(stalePlant) {
 	case "passes":

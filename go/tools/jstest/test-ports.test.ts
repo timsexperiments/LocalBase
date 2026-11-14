@@ -1,10 +1,10 @@
-// tools/test-ports.sh's test_port_pick, run in sh against small blocks. A port in use is held by a
+// scripts/test-ports.sh's test_port_pick, run in sh against small blocks. A port in use is held by a
 // listener here, on a port the system gave out. A run that hangs is killed, and that's a failure.
 //
 //   bun test go/tools/jstest
 import { afterEach, describe, expect, test } from "bun:test";
 
-const script = new URL("../test-ports.sh", import.meta.url).pathname;
+const script = new URL("../../scripts/test-ports.sh", import.meta.url).pathname;
 const held: { stop: (force?: boolean) => void }[] = [];
 afterEach(() => { for (const l of held.splice(0)) l.stop(true); });
 

@@ -14,7 +14,7 @@ import (
 
 const versionPkg = "github.com/timsexperiments/LocalBase/go/internal/version"
 
-// buildStamped builds this command with the release flags (tools/build.sh).
+// buildStamped builds this command with the release flags (scripts/build.sh).
 func buildStamped(t *testing.T, out string) {
 	t.Helper()
 	cmd := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags",

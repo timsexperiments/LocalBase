@@ -561,18 +561,18 @@ func TestFixturePassesSmoke(t *testing.T) {
 	}
 }
 
-// The kit builds a release the way tools/build.sh, the one build recipe, does: the same go build
+// The kit builds a release the way scripts/build.sh, the one build recipe, does: the same go build
 // flags and environment, and the same -ldflags plus exactly one -X for the throwaway signing key.
 // Nothing is copied, so a change to the recipe changes the kit.
 func TestKitBuildsLikeTheRelease(t *testing.T) {
 	goDir(t)
 	script := func(flag string) string {
 		t.Helper()
-		cmd := exec.Command("tools/build.sh", flag)
+		cmd := exec.Command("scripts/build.sh", flag)
 		cmd.Env = append(os.Environ(), "VERSION="+newVersion)
 		out, err := cmd.Output()
 		if err != nil {
-			t.Fatalf("tools/build.sh %s: %v", flag, err)
+			t.Fatalf("scripts/build.sh %s: %v", flag, err)
 		}
 		return strings.TrimSpace(string(out))
 	}
@@ -610,16 +610,16 @@ func TestKitBuildsLikeTheRelease(t *testing.T) {
 	printed := script("--goflags") + " " + script("--ldflags") + " " + script("--env")
 	for _, f := range []string{"-trimpath", "-buildvcs=false", "-s -w", "/version.Version=" + newVersion, "/version.Commit=", "/version.Date=", "CGO_ENABLED=0"} {
 		if !strings.Contains(printed, f) {
-			t.Errorf("tools/build.sh doesn't print %q: %s", f, printed)
+			t.Errorf("scripts/build.sh doesn't print %q: %s", f, printed)
 		}
 	}
-	b, err := os.ReadFile("tools/build.sh")
+	b, err := os.ReadFile("scripts/build.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, uses := range []string{"flags=$(ldflags)", `env $env go build $goflags -ldflags "$flags"`} {
 		if !strings.Contains(string(b), uses) {
-			t.Errorf("tools/build.sh no longer builds with what it prints: no %q", uses)
+			t.Errorf("scripts/build.sh no longer builds with what it prints: no %q", uses)
 		}
 	}
 }

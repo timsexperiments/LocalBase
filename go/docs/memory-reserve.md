@@ -149,12 +149,12 @@ small Mac.
 
 ### The check to run on a real 8 or 16 GiB Mac
 
-Do this before a default changes. `tools/reserve-check.sh` has not been run yet: it passed syntax
+Do this before a default changes. `scripts/reserve-check.sh` has not been run yet: it passed syntax
 checks only, because the machine here is the wrong size and runs the live gateway.
 
 ```sh
-tools/reserve-check.sh sample 300     # read-only, during normal use with a browser and apps open
-tools/reserve-check.sh probe          # allocates, in steps; save your work first
+scripts/reserve-check.sh sample 300     # read-only, during normal use with a browser and apps open
+scripts/reserve-check.sh probe          # allocates, in steps; save your work first
 ```
 
 `probe` refuses to start if LocalBase or a model runtime is running, or on more than 24 GiB. It

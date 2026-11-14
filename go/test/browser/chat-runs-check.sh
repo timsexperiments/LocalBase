@@ -1,5 +1,5 @@
 #!/bin/sh
-. "$(dirname "$0")/../../tools/test-ports.sh"
+. "$(dirname "$0")/../../scripts/test-ports.sh"
 # Detached chat runs in headless Chrome (DESIGN §22.7) against a --no-auth
 # scratch gateway whose chat model is the fake llama-server, so no weights
 # load (and, for the Lab steps, the same fake as LOCALBASE_SD_SERVER with

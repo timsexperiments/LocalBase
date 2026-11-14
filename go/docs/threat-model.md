@@ -115,6 +115,6 @@ These are accepted, and each has a reason.
 ## How it stays this way
 
 - **Route matrix and OpenAPI permission tests** fail on a route nobody classified.
-- **Fuzz targets** run their seeds in `go test`. `tools/fuzz.sh` searches on demand; a failing input goes into the target's `testdata/fuzz` and is committed with the fix.
+- **Fuzz targets** run their seeds in `go test`. `scripts/fuzz.sh` searches on demand; a failing input goes into the target's `testdata/fuzz` and is committed with the fix.
 - **`govulncheck`** runs in the lint job, and weekly.
 - **Mutation checks** by hand on each security fix: revert each rule and see a test fail.

@@ -14,8 +14,8 @@ set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 # Archive names match v0.1.0, so older copies of the installer keep working.
 targets="macos-arm64:darwin:arm64 macos-x64:darwin:amd64 linux-x64:linux:amd64 linux-arm64:linux:arm64"
-# go/tools/build.sh is the one build recipe; this only chooses the targets.
-build="$repo/go/tools/build.sh"
+# go/scripts/build.sh is the one build recipe; this only chooses the targets.
+build="$repo/go/scripts/build.sh"
 
 source_version() {
   "$build" --version
