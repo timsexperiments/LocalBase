@@ -43,15 +43,16 @@ func launchersWithoutMockKeychain(fsys fs.FS) (missing []string, read int, err e
 	return treewalk.Names(found), read, err
 }
 
-// launcherTrees are the trees whose scripts start Chrome, from this package: go/tools and go/test.
-var launcherTrees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}}
+// launcherTrees are the trees whose scripts start Chrome, from this package: go/tools, go/test and
+// go/scripts.
+var launcherTrees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}, {Label: "scripts", Dir: "../../../scripts"}}
 
 // minLaunchersRead is the fewest files the check reads across both trees. Fewer means a tree moved
 // out of its reach, so the check fails rather than pass on less.
-const minLaunchersRead = 106
+const minLaunchersRead = 123
 
-// Every script under go/tools and go/test that starts Chrome keeps it away from the Keychain: see
-// tools/README.md for what happens otherwise.
+// Every script under go/tools, go/test and go/scripts that starts Chrome keeps it away from the
+// Keychain: see tools/README.md for what happens otherwise.
 func TestEveryChromeLauncherStaysAwayFromTheKeychain(t *testing.T) {
 	found := treewalk.WalkTrees(t, launcherTrees, minLaunchersRead, launcherFilter, withoutMockKeychain)
 	for _, name := range treewalk.Names(found) {

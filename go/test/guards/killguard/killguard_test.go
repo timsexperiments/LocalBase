@@ -67,15 +67,16 @@ func scan(fsys fs.FS) (map[string][]string, error) {
 	return found, err
 }
 
-// trees are what the guard reads: go/tools, and go/test, where step 7 moves the test suites and
-// their scripts out of go/tools. A move from one to the other changes neither what is read nor how
-// much. Findings are named from the go directory, tools/... or test/....
-var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}}
+// trees are what the guard reads: go/tools, go/test, where step 7 moved the test suites and their
+// scripts, and go/scripts, where it moved the shell glue. A move from one to another changes neither
+// what is read nor how much. Findings are named from the go directory: tools/..., test/... or
+// scripts/....
+var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}, {Label: "scripts", Dir: "../../../scripts"}}
 
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive.
-const minRead = 199
+const minRead = 217
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
 // other file may join. Lower a number, or remove a line, as they are fixed.
