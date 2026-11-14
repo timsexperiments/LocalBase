@@ -106,21 +106,21 @@ const otlpSecret = "otlpHeaderSecret55"
 
 // runOTLP launches a gateway exporting to a local collector, sends the
 // scripted requests, and stops it (the final flush).
-func runOTLP(t *testing.T, impl string, status int) *otlpRun {
+func runOTLP(t *testing.T, impl string, status int, opts ...harness.Option) *otlpRun {
 	t.Helper()
 	col := &collector{status: status}
 	srv := rangeServer(t, col, false)
-	run := runOTLPAt(t, impl, srv.URL+"/base")
+	run := runOTLPAt(t, impl, srv.URL+"/base", opts...)
 	run.col = col
 	return run
 }
 
 // runOTLPAt runs the scripted requests against a gateway exporting to
 // endpoint; the caller fills in what was received.
-func runOTLPAt(t *testing.T, impl, endpoint string) *otlpRun {
+func runOTLPAt(t *testing.T, impl, endpoint string, opts ...harness.Option) *otlpRun {
 	t.Helper()
-	tg, err := harness.Launch(impl, harness.Env([]string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
-		"OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret}))
+	tg, err := harness.Launch(impl, append([]harness.Option{harness.Env([]string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
+		"OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret})}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,8 +262,11 @@ func otlpPlain(v any) any {
 // same request and inference log records, correlated to the same spans,
 // for the same requests; exporter headers are sent and never logged.
 func TestDifferentialOTLP(t *testing.T) {
-	harness.RequireTS(t)
-	runs := map[string]*otlpRun{"ts": runOTLP(t, "ts", 0), "go": runOTLP(t, "go", 0)}
+	fixture := pinnedFixture(t)
+	runs := map[string]*otlpRun{"go": runOTLP(t, "go", 0, fixture...)}
+	if tsLive() {
+		runs["ts"] = runOTLP(t, "ts", 0, fixture...)
+	}
 	records := map[string]map[string]map[string]any{}
 	for impl, run := range runs {
 		records[impl] = run.checkRecords(t, impl)
@@ -279,7 +282,7 @@ func TestDifferentialOTLP(t *testing.T) {
 		}
 	}
 	labels := []string{"models", "unmatched", "missing", "invalid"}
-	if runs["ts"].real && runs["go"].real {
+	if runs["go"].real && (runs["ts"] == nil || runs["ts"].real) {
 		labels = append(labels, "chat")
 	}
 	t.Logf("comparing %v", labels)
@@ -295,11 +298,29 @@ func TestDifferentialOTLP(t *testing.T) {
 			t.Errorf("go %s request record lacks error_code %s: %v", label, code, rec)
 		}
 	}
+	// What the comparison with TS skips as volatile (the version, queue time) is left out of Go's
+	// pinned trees and records too. The Go-only error attributes stay in them: they are Go's answer.
+	volatile := func(p string) bool {
+		return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms")
+	}
 	for _, label := range labels {
-		a, b := runs["ts"].tree(runs["ts"].requests[label]), runs["go"].tree(runs["go"].requests[label])
-		if a == nil || b == nil {
-			t.Errorf("%s: no server span (ts %v, go %v)", label, a != nil, b != nil)
+		b := runs["go"].tree(runs["go"].requests[label])
+		if b == nil {
+			t.Errorf("%s: no go server span", label)
 			continue
+		}
+		// A real model's chat (never on fake backends, where the goldens are recorded) varies
+		// from run to run, so it is compared with TS but not pinned.
+		pin := label != "chat"
+		if pin {
+			harness.PinJSON(t, label+" span tree", harness.PruneJSON(b, "", volatile))
+		}
+		var a map[string]any
+		if tsLive() {
+			if a = runs["ts"].tree(runs["ts"].requests[label]); a == nil {
+				t.Errorf("%s: no ts server span", label)
+				continue
+			}
 		}
 		// Go names an error response's type and code on the server span
 		// and the request record (operator observability audit); TS does not.
@@ -311,23 +332,34 @@ func TestDifferentialOTLP(t *testing.T) {
 			}
 			return false
 		}
-		skip := func(p string) bool {
-			return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms") || goOnly(p)
-		}
-		if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
-			t.Errorf("%s span tree differs:\n  %s", label, strings.Join(d, "\n  "))
+		skip := func(p string) bool { return volatile(p) || goOnly(p) }
+		if a != nil {
+			if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
+				t.Errorf("%s span tree differs:\n  %s", label, strings.Join(d, "\n  "))
+			}
 		}
 		for _, ev := range []string{"http.request", "inference.completed"} {
 			if label != "chat" && ev == "inference.completed" {
 				continue
 			}
-			ra, rb := records["ts"][ev+"|"+runs["ts"].requests[label]], records["go"][ev+"|"+runs["go"].requests[label]]
-			if ra == nil || rb == nil {
-				t.Errorf("%s: %s record missing (ts %v, go %v)", label, ev, ra != nil, rb != nil)
+			rb := records["go"][ev+"|"+runs["go"].requests[label]]
+			if rb == nil {
+				t.Errorf("%s: %s go record missing", label, ev)
+				continue
+			}
+			nb := map[string]any{"attributes": normAttrs(rb["attributes"].(map[string]any)), "severity": rb["severityText"], "flags": rb["flags"]}
+			if pin {
+				harness.PinJSON(t, label+" "+ev+" record", harness.PruneJSON(nb, "", func(p string) bool { return strings.HasSuffix(p, "_ms") }))
+			}
+			if !tsLive() {
+				continue
+			}
+			ra := records["ts"][ev+"|"+runs["ts"].requests[label]]
+			if ra == nil {
+				t.Errorf("%s: %s ts record missing", label, ev)
 				continue
 			}
 			na := map[string]any{"attributes": normAttrs(ra["attributes"].(map[string]any)), "severity": ra["severityText"], "flags": ra["flags"]}
-			nb := map[string]any{"attributes": normAttrs(rb["attributes"].(map[string]any)), "severity": rb["severityText"], "flags": rb["flags"]}
 			skipMs := func(p string) bool { return strings.HasSuffix(p, "_ms") || goOnly(p) }
 			if d := harness.DiffJSON("", na, nb, skipMs); len(d) > 0 {
 				t.Errorf("%s %s record differs:\n  %s", label, ev, strings.Join(d, "\n  "))
@@ -340,10 +372,14 @@ func TestDifferentialOTLP(t *testing.T) {
 // the local log, with the same event and attributes on both gateways, and
 // never exported.
 func TestDifferentialOTLPFailures(t *testing.T) {
-	harness.RequireTS(t)
+	fixture := pinnedFixture(t)
 	got := map[string][]map[string]any{}
-	for _, impl := range []string{"ts", "go"} {
-		run := runOTLP(t, impl, 500)
+	impls := []string{"go"}
+	if tsLive() {
+		impls = append(impls, "ts")
+	}
+	for _, impl := range impls {
+		run := runOTLP(t, impl, 500, fixture...)
 		for _, e := range localEvents(t, run.root) {
 			if strings.HasPrefix(fmt.Sprint(e["eventName"]), "observability.export") {
 				a := e["attributes"].(map[string]any)
@@ -369,7 +405,12 @@ func TestDifferentialOTLPFailures(t *testing.T) {
 		}
 		return out
 	}
-	a, b := distinct(got["ts"]), distinct(got["go"])
+	b := distinct(got["go"])
+	harness.PinJSON(t, "failure reports", b)
+	if !tsLive() {
+		return
+	}
+	a := distinct(got["ts"])
 	if d := harness.DiffJSON("", a, b, nil); len(d) > 0 {
 		t.Errorf("failure reports differ:\n  %s\nts %v\ngo %v", strings.Join(d, "\n  "), a, b)
 	}
@@ -379,7 +420,7 @@ func TestDifferentialOTLPFailures(t *testing.T) {
 // exporter settings, OTEL_* applied, as TS does; an invalid variable fails
 // both the same way.
 func TestCLIOtelEnvironment(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	initOwnTwinRoots(t, roots)

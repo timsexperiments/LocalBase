@@ -1,0 +1,284 @@
+{
+  "calls": [
+    {
+      "args": [
+        "--json",
+        "init"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"configuration\":{\"activeImageModel\":\"dreamshaper-8-lcm\",\"activeLlmModel\":\"qwen3.5-4b-q4_k_m\",\"activeSttModel\":\"whisper-base-q8_0\",\"activeTtsModel\":\"\",\"activeVideoModel\":\"\",\"ctxMode\":\"auto\",\"ctxSize\":131072,\"hfTokenConfigured\":false,\"host\":\"127.0.0.1\",\"imageModelsDir\":\"\u003croot\u003e/models/image\",\"llmModelsDir\":\"\u003croot\u003e/models/llm\",\"memory\":{\"acceleratorReserve\":{\"percent\":10,\"minimumGb\":2},\"systemReserve\":{\"percent\":15,\"minimumGb\":8}},\"observability\":{\"enabled\":false,\"endpoint\":\"\",\"persistedEndpoint\":\"\",\"sampleRatio\":1,\"sampler\":\"parentbased_traceidratio\",\"source\":\"disabled\"},\"parallel\":\"auto\",\"port\":18000,\"root\":\"\u003croot\u003e\",\"selectedImageModels\":[\"dreamshaper-8-lcm\"],\"selectedLlmModels\":[\"qwen3.5-4b-q4_k_m\"],\"selectedSttModels\":[\"whisper-base-q8_0\"],\"selectedTtsModels\":[],\"selectedVideoModels\":[],\"sttHost\":\"127.0.0.1\",\"sttModelsDir\":\"\u003croot\u003e/models/stt\",\"sttPort\":18080,\"ttsModelsDir\":\"\u003croot\u003e/models/tts\",\"videoModelsDir\":\"\u003croot\u003e/models/video\"}},\"ok\":true}\n",
+      "stderr": "Initialized local-base at \u003croot\u003e\nLLM directory: \u003croot\u003e/models/llm\nSTT directory: \u003croot\u003e/models/stt\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "status"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":true,\"url\":\"https://raw.githubusercontent.com/timsexperiments/LocalBase/main/catalog/feed-v2.json\",\"source\":\"default\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":null,\"revision\":null,\"stale\":true,\"lastError\":null,\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "Feed:      https://raw.githubusercontent.com/timsexperiments/LocalBase/main/catalog/feed-v2.json (the published LocalBase feed)\nFetched:   Never; the built-in catalog is in use\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "use",
+        "ftp://example.com/feed.json"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"feed: must use https:// (plain http:// is allowed only for localhost)\"},\"ok\":false}\n",
+      "stderr": "Error: feed: must use https:// (plain http:// is allowed only for localhost)\nChoose the remote catalog feed URL, or turn the feed off\n\nUSAGE local-base models feed use [OPTIONS] \u003cfeed\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n\nEXAMPLES\n\n  local-base models feed use https://example.com/catalog/feed.json\n  local-base models feed use off\n  local-base models feed use default\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "use",
+        "http://127.0.0.1:\u003cport\u003e/feed.json"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/feed.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":null,\"revision\":null,\"stale\":true,\"lastError\":null,\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "Using the feed at http://127.0.0.1:\u003cport\u003e/feed.json.\nRun `local-base models feed refresh` to download it now; a running gateway checks within the hour.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "status"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/feed.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":null,\"revision\":null,\"stale\":true,\"lastError\":null,\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "Feed:      http://127.0.0.1:\u003cport\u003e/feed.json (set with `local-base models feed use`)\nFetched:   Never; the built-in catalog is in use\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "refresh"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"error\":null,\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/feed.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":\"\u003ctime\u003e\",\"checkedAt\":\"\u003ctime\u003e\",\"revision\":\"73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\",\"stale\":false,\"lastError\":null,\"entries\":3,\"builtIn\":1,\"added\":[\"community-tiny-stt\"],\"skipped\":1,\"schemaVersion\":2,\"annotations\":3,\"annotationsSkipped\":1},\"outcome\":\"updated\"},\"ok\":true}\n",
+      "stderr": "Downloaded the feed: 1 community model(s) added to the catalog.\nFeed:      http://127.0.0.1:\u003cport\u003e/feed.json (set with `local-base models feed use`)\nFetched:   \u003ctime\u003e\nRevision:  73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\nModels:    3 in the feed · 1 added (community) · 1 already built in · 1 skipped as invalid\nSchema:    version 2 · 3 annotation(s) · 1 skipped as invalid\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "status"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/feed.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":\"\u003ctime\u003e\",\"checkedAt\":\"\u003ctime\u003e\",\"revision\":\"73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\",\"stale\":false,\"lastError\":null,\"entries\":3,\"builtIn\":1,\"added\":[\"community-tiny-stt\"],\"skipped\":1,\"schemaVersion\":2,\"annotations\":3,\"annotationsSkipped\":1}},\"ok\":true}\n",
+      "stderr": "Feed:      http://127.0.0.1:\u003cport\u003e/feed.json (set with `local-base models feed use`)\nFetched:   \u003ctime\u003e\nRevision:  73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\nModels:    3 in the feed · 1 added (community) · 1 already built in · 1 skipped as invalid\nSchema:    version 2 · 3 annotation(s) · 1 skipped as invalid\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "refresh"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"error\":null,\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/feed.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":\"\u003ctime\u003e\",\"checkedAt\":\"\u003ctime\u003e\",\"revision\":\"73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\",\"stale\":false,\"lastError\":null,\"entries\":3,\"builtIn\":1,\"added\":[\"community-tiny-stt\"],\"skipped\":1,\"schemaVersion\":2,\"annotations\":3,\"annotationsSkipped\":1},\"outcome\":\"fresh\"},\"ok\":true}\n",
+      "stderr": "The cached feed is less than a day old; nothing was downloaded. Use --force to download it now.\nFeed:      http://127.0.0.1:\u003cport\u003e/feed.json (set with `local-base models feed use`)\nFetched:   \u003ctime\u003e\nRevision:  73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\nModels:    3 in the feed · 1 added (community) · 1 already built in · 1 skipped as invalid\nSchema:    version 2 · 3 annotation(s) · 1 skipped as invalid\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "refresh",
+        "--force"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"error\":null,\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/feed.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":\"\u003ctime\u003e\",\"checkedAt\":\"\u003ctime\u003e\",\"revision\":\"73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\",\"stale\":false,\"lastError\":null,\"entries\":3,\"builtIn\":1,\"added\":[\"community-tiny-stt\"],\"skipped\":1,\"schemaVersion\":2,\"annotations\":3,\"annotationsSkipped\":1},\"outcome\":\"unchanged\"},\"ok\":true}\n",
+      "stderr": "The feed has not changed.\nFeed:      http://127.0.0.1:\u003cport\u003e/feed.json (set with `local-base models feed use`)\nFetched:   \u003ctime\u003e\nChecked:   \u003ctime\u003e\nRevision:  73b61db8c7ced4ff08ea152f2a33d0fa5c6817e5797cc532ee6e9cf29ba5fcdc\nModels:    3 in the feed · 1 added (community) · 1 already built in · 1 skipped as invalid\nSchema:    version 2 · 3 annotation(s) · 1 skipped as invalid\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "show",
+        "community-tiny-stt"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"model\":{\"object\":\"localbase.model\",\"id\":\"community-tiny-stt\",\"catalog\":{\"name\":\"Whisper\",\"displayName\":\"Community Tiny\",\"provider\":\"Community\",\"source\":\"https://huggingface.co/community/tiny\",\"revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kind\":\"stt\",\"qualificationState\":\"qualified\",\"trust\":\"community\",\"catalogTier\":\"remote\",\"catalogFeed\":\"http://127.0.0.1:\u003cport\u003e/feed.json\",\"commercialStatus\":\"open\",\"summary\":\"Community entry.\",\"notes\":\"From the test feed.\",\"quantization\":\"Q8_0\",\"features\":[\"speech-to-text\"],\"artifacts\":[{\"role\":\"primary\",\"filename\":\"ggml-community-tiny.bin\",\"source\":null,\"sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"sizeBytes\":4096}],\"memory\":{\"minimumVramEstimateGb\":1,\"storageEstimateGb\":0.01,\"source\":\"estimate\",\"demandBytes\":234240384,\"launchShape\":\"default\",\"reference\":{\"source\":\"estimate\",\"bytes\":234240384,\"launchShape\":\"default\"},\"observedPeaks\":[],\"observed\":null,\"feedPeak\":null,\"fit\":{\"verdict\":\"fits\",\"systemMemoryGb\":64,\"headroomGb\":63}},\"capabilities\":null,\"inputModalities\":[\"audio\"],\"outputModalities\":[\"text\"],\"contextWindowTokens\":null,\"maxOutputTokens\":null,\"unsupportedCapabilities\":[],\"feedAnnotation\":{\"repo\":\"community/tiny\",\"revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"file\":\"ggml-community-tiny.bin\",\"modelId\":\"community-tiny-stt\",\"status\":\"verified\",\"revisionMatch\":true,\"unsupportedCapabilities\":[],\"memoryPeaks\":[],\"recipe\":null},\"capabilityResolution\":{\"capabilities\":[{\"id\":\"speech-to-text\",\"source\":\"declared\"}],\"mismatches\":[],\"inputModalities\":{\"values\":[\"audio\"],\"source\":\"declared\"}}},\"device\":{\"selected\":false,\"installed\":false,\"runtime\":null}},\"status\":{\"default\":false,\"enabled\":false,\"installed\":false}},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nCommunity Tiny\n  ID:             community-tiny-stt\n  Type:           Transcription\n  Status:         Not installed · Disabled\n  License:        Commercial use OK\n  Catalog:        Community catalog, not qualified · Remote catalog (http://127.0.0.1:\u003cport\u003e/feed.json#models[0])\n  Publisher:      Community\n  Source:         https://huggingface.co/community/tiny (revision bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)\n  Context length: Not applicable\n  Quantization:   Q8_0\n  Summary:        Community entry.\n  Notes:          From the test feed.\n\nFiles\n  ggml-community-tiny.bin · 4 KB\n\nCapabilities\n  Speech to text · Listed in the catalog\n\nMemory\n  Planning min:   1 GB (estimate)\n  Estimate: 0.2 GB with standard settings (formula estimate, not measured)\n  This machine:   Fits, 63 GB to spare of 64 GB\n  Note:           LocalBase's planning minimum is the estimated or measured accelerator demand at the stated launch settings plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement, and other settings or machines need different amounts.\n\nFrom the catalog feed\n  Status:         Verified by LocalBase\n  Published for:  community/tiny · ggml-community-tiny.bin at bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "catalog",
+        "--kind",
+        "stt"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"models\":[{\"artifacts\":[{\"expectedSizeBytes\":81768585,\"filename\":\"ggml-base-q8_0.bin\",\"role\":\"primary\",\"sha256\":\"c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9\",\"sourcePath\":\"ggml-base-q8_0.bin\"}],\"capabilities\":[{\"id\":\"speech-to-text\",\"source\":\"declared\"},{\"id\":\"multilingual\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"MIT License.\",\"commercialStatus\":\"open\",\"displayName\":\"Whisper Base\",\"family\":\"Whisper\",\"features\":[\"speech-to-text\",\"multilingual\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"audio\"],\"kind\":\"stt\",\"memoryLaunchShape\":\"default\",\"memorySource\":\"estimate\",\"minVramGb\":1,\"minimumVramEstimateGb\":1,\"modelId\":\"whisper-base-q8_0\",\"notes\":\"whisper.cpp ggml Q8_0 conversion of OpenAI Whisper base (74M parameters, multilingual). File header: 6 encoder and 6 decoder layers, 80 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"OpenAI/ggml\",\"qualificationState\":\"qualified\",\"quant\":\"Q8_0\",\"repositoryRevision\":\"5359861c739e955e79d9a303bcbc70fb988958b1\",\"size\":\"base\",\"source\":\"https://huggingface.co/ggerganov/whisper.cpp\",\"storageGb\":0.08,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"base\"},{\"artifacts\":[{\"expectedSizeBytes\":1624555275,\"filename\":\"ggml-large-v3-turbo.bin\",\"role\":\"primary\",\"sha256\":\"1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69\",\"sourcePath\":\"ggml-large-v3-turbo.bin\"}],\"capabilities\":[{\"id\":\"speech-to-text\",\"source\":\"declared\"},{\"id\":\"multilingual\",\"source\":\"declared\"},{\"id\":\"translation\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"MIT License.\",\"commercialStatus\":\"open\",\"displayName\":\"Whisper Large V3 Turbo\",\"family\":\"Whisper\",\"features\":[\"speech-to-text\",\"multilingual\",\"translation\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"audio\"],\"kind\":\"stt\",\"memoryLaunchShape\":\"default\",\"memorySource\":\"measured\",\"minVramGb\":3,\"minimumVramEstimateGb\":3,\"modelId\":\"whisper-large-v3-turbo\",\"notes\":\"whisper.cpp ggml F16 conversion of OpenAI Whisper large-v3-turbo (809M parameters, multilingual): large-v3 with the decoder reduced from 32 to 4 layers. File header: 32 encoder and 4 decoder layers, 128 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"OpenAI/ggml\",\"qualificationState\":\"qualified\",\"quant\":\"F16\",\"repositoryRevision\":\"5359861c739e955e79d9a303bcbc70fb988958b1\",\"size\":\"large\",\"source\":\"https://huggingface.co/ggerganov/whisper.cpp\",\"storageGb\":1.62,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"large-v3-turbo\"},{\"artifacts\":[{\"expectedSizeBytes\":4096,\"filename\":\"ggml-community-tiny.bin\",\"role\":\"primary\",\"sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"sourcePath\":\"ggml-community-tiny.bin\"}],\"capabilities\":[{\"id\":\"speech-to-text\",\"source\":\"declared\"}],\"catalogTier\":\"remote\",\"catch\":\"Community entry.\",\"commercialStatus\":\"open\",\"displayName\":\"Community Tiny\",\"family\":\"Whisper\",\"features\":[\"speech-to-text\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"audio\"],\"kind\":\"stt\",\"memoryLaunchShape\":\"default\",\"memorySource\":\"estimate\",\"minVramGb\":1,\"minimumVramEstimateGb\":1,\"modelId\":\"community-tiny-stt\",\"notes\":\"From the test feed.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Community\",\"qualificationState\":\"qualified\",\"quant\":\"Q8_0\",\"repositoryRevision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"size\":\"tiny\",\"source\":\"https://huggingface.co/community/tiny\",\"storageGb\":0.01,\"systemMemoryGb\":64,\"trust\":\"community\",\"version\":\"test\"}]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nstt   | whisper-base-q8_0                      | size=base       | plan_min=  1 GB estimate | fit=fits     | storage=0.08 GB | status=open\n      in=audio out=text features=speech-to-text,multilingual\n      catch: MIT License.\nstt   | whisper-large-v3-turbo                 | size=large      | plan_min=  3 GB measured | fit=fits     | storage=1.62 GB | status=open\n      in=audio out=text features=speech-to-text,multilingual,translation\n      catch: MIT License.\nstt   | community-tiny-stt                     | size=tiny       | plan_min=  1 GB estimate | fit=fits     | storage=0.01 GB | status=open\n      in=audio out=text features=speech-to-text trust=community source=remote\n      catch: Community entry.\nplan_min: LocalBase's planning minimum is the estimated or measured accelerator demand at the stated launch settings plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement, and other settings or machines need different amounts. Each figure is at the model's reference launch (LLMs: up to an 8,192-token context, 1 request at a time); \"measured\" figures were recorded on Apple M-series 64 GiB, macOS 26. Run \"local-base models show \u003cid\u003e\" for the exact settings.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "show",
+        "whisper-small-q8_0"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Unknown model id: whisper-small-q8_0\"},\"ok\":false}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: Unknown model id: whisper-small-q8_0\nShow everything known about one model\n\nUSAGE local-base models show [OPTIONS] \u003cmodelId\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n\nEXAMPLES\n\n  local-base models show qwen3.5-4b-q4_k_m\n  local-base --json models show whisper-large-v3-turbo\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "show",
+        "qwen2.5-coder-3b-instruct-q4_k_m"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Unknown model id: qwen2.5-coder-3b-instruct-q4_k_m\"},\"ok\":false}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: Unknown model id: qwen2.5-coder-3b-instruct-q4_k_m\nShow everything known about one model\n\nUSAGE local-base models show [OPTIONS] \u003cmodelId\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n\nEXAMPLES\n\n  local-base models show qwen3.5-4b-q4_k_m\n  local-base --json models show whisper-large-v3-turbo\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "catalog",
+        "--kind",
+        "llm"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"models\":[{\"artifacts\":[{\"expectedSizeBytes\":3013027808,\"filename\":\"Qwen_Qwen3.5-4B-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983\",\"sourcePath\":\"Qwen_Qwen3.5-4B-Q4_K_M.gguf\"}],\"capabilities\":[{\"id\":\"text-generation\",\"source\":\"declared\"},{\"id\":\"tool-calling\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Apache-2.0. Text only; no vision projector or image/video input.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Qwen3.5 4B\",\"family\":\"Qwen3.5\",\"features\":[\"text-generation\",\"tool-calling\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\"],\"kind\":\"llm\",\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"measured\",\"minVramGb\":5,\"minimumVramEstimateGb\":5,\"modelId\":\"qwen3.5-4b-q4_k_m\",\"notes\":\"bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-4B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"4168f45a16a1290d65a4ec0fa312ae917a4c15d6\",\"size\":\"4B\",\"source\":\"https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF\",\"storageGb\":3.01,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"3.5\"},{\"artifacts\":[{\"expectedSizeBytes\":19500506080,\"filename\":\"Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf\",\"role\":\"primary\",\"sha256\":\"071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4\",\"sourcePath\":\"Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf\"},{\"expectedSizeBytes\":899283680,\"filename\":\"qwen3.6-35b-a3b-iq4_nl_xl-mmproj-F16.gguf\",\"role\":\"supplementary\",\"sha256\":\"8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f\",\"sourcePath\":\"mmproj-F16.gguf\"}],\"capabilities\":[{\"id\":\"reasoning\",\"source\":\"declared\"},{\"id\":\"tool-calling\",\"source\":\"declared\"},{\"id\":\"long-context\",\"source\":\"declared\"},{\"id\":\"mixture-of-experts\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Apache-2.0. Mixture-of-experts: 35B parameters, 3B active per token. Text and image input through the pinned F16 vision projector.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Qwen3.6 35B-A3B\",\"family\":\"Qwen3.6\",\"features\":[\"reasoning\",\"tool-calling\",\"long-context\",\"mixture-of-experts\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\",\"image\"],\"kind\":\"llm\",\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"estimate\",\"minVramGb\":24,\"minimumVramEstimateGb\":24,\"modelId\":\"qwen3.6-35b-a3b-iq4_nl_xl\",\"notes\":\"Unsloth Dynamic IQ4_NL_XL imatrix GGUF of Qwen/Qwen3.6-35B-A3B, with the F16 vision projector from the same repository. GGUF header: architecture qwen35moe (linear-attention layers with full attention every 4th layer), 40 layers, 256 experts with 8 routed experts per token plus a shared expert, 262,144-token training context. Projector header: clip vision encoder (27 blocks, 16-pixel patches, 768-pixel input, qwen3vl_merger projector). Embedded tokenizer and chat template with tool-call and thinking markup. The upstream card also lists video input, which this entry does not declare.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"IQ4_NL_XL\",\"repositoryRevision\":\"a483e9e6cbd595906af30beda3187c2663a1118c\",\"size\":\"35B-A3B\",\"source\":\"https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF\",\"storageGb\":20.4,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"3.6\"},{\"artifacts\":[{\"expectedSizeBytes\":17772537440,\"filename\":\"Qwen3.8-27B-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b\",\"sourcePath\":\"Qwen3.8-27B-Q4_K_M.gguf\"}],\"capabilities\":[{\"id\":\"reasoning\",\"source\":\"declared\"},{\"id\":\"tool-calling\",\"source\":\"declared\"},{\"id\":\"long-context\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Apache-2.0. Text only; no vision projector or image/video input.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Qwen3.8 27B\",\"family\":\"Qwen3.8\",\"features\":[\"reasoning\",\"tool-calling\",\"long-context\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\"],\"kind\":\"llm\",\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"estimate\",\"minVramGb\":21,\"minimumVramEstimateGb\":21,\"modelId\":\"qwen3.8-27b-q4_k_m\",\"notes\":\"bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.8-27B (quantized with llama.cpp b10419). GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 64 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"f0eec4a4bb4975114a030d048952d83c0a53c034\",\"size\":\"27B\",\"source\":\"https://huggingface.co/bartowski/Qwen3.8-27B-GGUF\",\"storageGb\":17.77,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"3.8\"},{\"artifacts\":[{\"expectedSizeBytes\":639150592,\"filename\":\"Qwen3-Embedding-0.6B-Q8_0.gguf\",\"role\":\"primary\",\"sha256\":\"06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439\",\"sourcePath\":\"Qwen3-Embedding-0.6B-Q8_0.gguf\"}],\"capabilities\":[{\"id\":\"embeddings\",\"source\":\"declared\"},{\"id\":\"multilingual\",\"source\":\"declared\"},{\"id\":\"code-retrieval\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Embedding endpoint only. Chat completions are rejected before runtime admission.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":32768,\"displayName\":\"Qwen3 Embedding 0.6B\",\"family\":\"Qwen3-Embedding\",\"features\":[\"embeddings\",\"multilingual\",\"code-retrieval\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\"],\"kind\":\"llm\",\"llmRuntime\":{\"capability\":\"embedding-only\",\"dimensions\":{\"maximum\":1024,\"minimum\":1024},\"pooling\":\"last\"},\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=f16/f16\",\"memorySource\":\"estimate\",\"minVramGb\":3,\"minimumVramEstimateGb\":3,\"modelId\":\"qwen3-embedding-0.6b-q8_0\",\"notes\":\"Official Qwen Q8_0 GGUF of Qwen3-Embedding-0.6B (base Qwen3-0.6B-Base, 28 layers; the model card states a 32k-token context). The runtime uses last-token pooling and emits 1024-dimensional vectors. Embedded tokenizer; memory estimate assumes short inputs.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"Q8_0\",\"repositoryRevision\":\"370f27d7550e0def9b39c1f16d3fbaa13aa67728\",\"size\":\"0.6B\",\"source\":\"https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF\",\"storageGb\":0.64,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"0.6B\"},{\"artifacts\":[{\"expectedSizeBytes\":2496703776,\"filename\":\"Qwen3-Embedding-4B-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"2b0cf8f17b4c723c27303015383c27ec4bf2d8314bb677d05e920dd70bb0f16b\",\"sourcePath\":\"Qwen3-Embedding-4B-Q4_K_M.gguf\"}],\"capabilities\":[{\"id\":\"embeddings\",\"source\":\"declared\"},{\"id\":\"multilingual\",\"source\":\"declared\"},{\"id\":\"code-retrieval\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":32768,\"displayName\":\"Qwen3 Embedding 4B\",\"family\":\"Qwen3-Embedding\",\"features\":[\"embeddings\",\"multilingual\",\"code-retrieval\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\"],\"kind\":\"llm\",\"llmRuntime\":{\"capability\":\"embedding-only\",\"dimensions\":{\"maximum\":2560,\"minimum\":2560},\"pooling\":\"last\"},\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=f16/f16\",\"memorySource\":\"estimate\",\"minVramGb\":5,\"minimumVramEstimateGb\":5,\"modelId\":\"qwen3-embedding-4b-q4_k_m\",\"notes\":\"Official Qwen Q4_K_M GGUF of Qwen3-Embedding-4B (base Qwen3-4B-Base, 36 layers). The model card states a 32k-token context; the GGUF header declares 40,960. Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"f4602530db1d980e16da9d7d3a70294cf5c190be\",\"size\":\"4B\",\"source\":\"https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF\",\"storageGb\":2.5,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"4B\"},{\"artifacts\":[{\"expectedSizeBytes\":6486448288,\"filename\":\"Clef-Flash-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2\",\"sourcePath\":\"Clef-Flash-Q4_K_M.gguf\"},{\"expectedSizeBytes\":624229728,\"filename\":\"mmproj-Clef-Flash-Q8_0.gguf\",\"role\":\"supplementary\",\"sha256\":\"9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d\",\"sourcePath\":\"mmproj-Clef-Flash-Q8_0.gguf\"}],\"capabilities\":[{\"id\":\"decision\",\"source\":\"declared\"},{\"id\":\"long-context\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Clef Flash\",\"family\":\"Clef\",\"features\":[\"decision\",\"long-context\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\",\"image\"],\"kind\":\"llm\",\"llmRuntime\":{\"capability\":\"decision-only\"},\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"measured\",\"minVramGb\":10,\"minimumVramEstimateGb\":10,\"modelId\":\"clef-flash-q4_k_m\",\"notes\":\"Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). GGUF header: architecture clef, 32 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef (clef-q4_k_m) is the 27B decision model.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Cloudflare\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"6b4fe4c59098479652d94f0fe11a40facbebd1ec\",\"size\":\"9B\",\"source\":\"https://huggingface.co/ggml-org/Clef-Flash-GGUF\",\"storageGb\":7.11,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"Flash\"},{\"artifacts\":[{\"expectedSizeBytes\":19232219200,\"filename\":\"Clef-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822\",\"sourcePath\":\"Clef-Q4_K_M.gguf\"},{\"expectedSizeBytes\":629247456,\"filename\":\"mmproj-Clef-Q8_0.gguf\",\"role\":\"supplementary\",\"sha256\":\"744ad2db24c336fc9120dd5ba06344c0601b9efd365fe96be01ce5c4e6ab64cf\",\"sourcePath\":\"mmproj-Clef-Q8_0.gguf\"}],\"capabilities\":[{\"id\":\"decision\",\"source\":\"declared\"},{\"id\":\"long-context\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Clef 27B\",\"family\":\"Clef\",\"features\":[\"decision\",\"long-context\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\",\"image\"],\"kind\":\"llm\",\"llmRuntime\":{\"capability\":\"decision-only\"},\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"estimate\",\"minVramGb\":25,\"minimumVramEstimateGb\":25,\"modelId\":\"clef-q4_k_m\",\"notes\":\"Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). GGUF header: architecture clef, 64 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef Flash (clef-flash-q4_k_m) is the 9B default decision model.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Cloudflare\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"d2aa75cb425ae922b5c3c15ef3157d417b7f7641\",\"size\":\"27B\",\"source\":\"https://huggingface.co/ggml-org/Clef-GGUF\",\"storageGb\":19.86,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"27B\"}]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nllm   | qwen3.5-4b-q4_k_m                      | size=4B         | plan_min=  5 GB measured | fit=fits     | storage=3.01 GB | status=open\n      in=text out=text features=text-generation,tool-calling\n      catch: Apache-2.0. Text only; no vision projector or image/video input.\nllm   | qwen3.6-35b-a3b-iq4_nl_xl              | size=35B-A3B    | plan_min= 24 GB estimate | fit=fits     | storage=20.40 GB | status=open\n      in=text,image out=text features=reasoning,tool-calling,long-context,mixture-of-experts\n      catch: Apache-2.0. Mixture-of-experts: 35B parameters, 3B active per token. Text and image input through the pinned F16 vision projector.\nllm   | qwen3.8-27b-q4_k_m                     | size=27B        | plan_min= 21 GB estimate | fit=fits     | storage=17.77 GB | status=open\n      in=text out=text features=reasoning,tool-calling,long-context\n      catch: Apache-2.0. Text only; no vision projector or image/video input.\nllm   | qwen3-embedding-0.6b-q8_0              | size=0.6B       | plan_min=  3 GB estimate | fit=fits     | storage=0.64 GB | status=open\n      in=text out=text features=embeddings,multilingual,code-retrieval\n      catch: Embedding endpoint only. Chat completions are rejected before runtime admission.\nllm   | qwen3-embedding-4b-q4_k_m              | size=4B         | plan_min=  5 GB estimate | fit=fits     | storage=2.50 GB | status=open\n      in=text out=text features=embeddings,multilingual,code-retrieval\n      catch: Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.\nllm   | clef-flash-q4_k_m                      | size=9B         | plan_min= 10 GB measured | fit=fits     | storage=7.11 GB | status=open\n      in=text,image out=text features=decision,long-context\n      catch: Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.\nllm   | clef-q4_k_m                            | size=27B        | plan_min= 25 GB estimate | fit=fits     | storage=19.86 GB | status=open\n      in=text,image out=text features=decision,long-context\n      catch: Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.\nplan_min: LocalBase's planning minimum is the estimated or measured accelerator demand at the stated launch settings plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement, and other settings or machines need different amounts. Each figure is at the model's reference launch (LLMs: up to an 8,192-token context, 1 request at a time); \"measured\" figures were recorded on Apple M-series 64 GiB, macOS 26. Run \"local-base models show \u003cid\u003e\" for the exact settings.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "catalog",
+        "--capability",
+        "tool-calling"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"models\":[{\"artifacts\":[{\"expectedSizeBytes\":3013027808,\"filename\":\"Qwen_Qwen3.5-4B-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983\",\"sourcePath\":\"Qwen_Qwen3.5-4B-Q4_K_M.gguf\"}],\"capabilities\":[{\"id\":\"text-generation\",\"source\":\"declared\"},{\"id\":\"tool-calling\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Apache-2.0. Text only; no vision projector or image/video input.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Qwen3.5 4B\",\"family\":\"Qwen3.5\",\"features\":[\"text-generation\",\"tool-calling\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\"],\"kind\":\"llm\",\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"measured\",\"minVramGb\":5,\"minimumVramEstimateGb\":5,\"modelId\":\"qwen3.5-4b-q4_k_m\",\"notes\":\"bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-4B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"4168f45a16a1290d65a4ec0fa312ae917a4c15d6\",\"size\":\"4B\",\"source\":\"https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF\",\"storageGb\":3.01,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"3.5\"},{\"artifacts\":[{\"expectedSizeBytes\":19500506080,\"filename\":\"Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf\",\"role\":\"primary\",\"sha256\":\"071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4\",\"sourcePath\":\"Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf\"},{\"expectedSizeBytes\":899283680,\"filename\":\"qwen3.6-35b-a3b-iq4_nl_xl-mmproj-F16.gguf\",\"role\":\"supplementary\",\"sha256\":\"8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f\",\"sourcePath\":\"mmproj-F16.gguf\"}],\"capabilities\":[{\"id\":\"reasoning\",\"source\":\"declared\"},{\"id\":\"tool-calling\",\"source\":\"declared\"},{\"id\":\"long-context\",\"source\":\"declared\"},{\"id\":\"mixture-of-experts\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Apache-2.0. Mixture-of-experts: 35B parameters, 3B active per token. Text and image input through the pinned F16 vision projector.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Qwen3.6 35B-A3B\",\"family\":\"Qwen3.6\",\"features\":[\"reasoning\",\"tool-calling\",\"long-context\",\"mixture-of-experts\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\",\"image\"],\"kind\":\"llm\",\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"estimate\",\"minVramGb\":24,\"minimumVramEstimateGb\":24,\"modelId\":\"qwen3.6-35b-a3b-iq4_nl_xl\",\"notes\":\"Unsloth Dynamic IQ4_NL_XL imatrix GGUF of Qwen/Qwen3.6-35B-A3B, with the F16 vision projector from the same repository. GGUF header: architecture qwen35moe (linear-attention layers with full attention every 4th layer), 40 layers, 256 experts with 8 routed experts per token plus a shared expert, 262,144-token training context. Projector header: clip vision encoder (27 blocks, 16-pixel patches, 768-pixel input, qwen3vl_merger projector). Embedded tokenizer and chat template with tool-call and thinking markup. The upstream card also lists video input, which this entry does not declare.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"IQ4_NL_XL\",\"repositoryRevision\":\"a483e9e6cbd595906af30beda3187c2663a1118c\",\"size\":\"35B-A3B\",\"source\":\"https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF\",\"storageGb\":20.4,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"3.6\"},{\"artifacts\":[{\"expectedSizeBytes\":17772537440,\"filename\":\"Qwen3.8-27B-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b\",\"sourcePath\":\"Qwen3.8-27B-Q4_K_M.gguf\"}],\"capabilities\":[{\"id\":\"reasoning\",\"source\":\"declared\"},{\"id\":\"tool-calling\",\"source\":\"declared\"},{\"id\":\"long-context\",\"source\":\"declared\"}],\"catalogTier\":\"built-in\",\"catch\":\"Apache-2.0. Text only; no vision projector or image/video input.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Qwen3.8 27B\",\"family\":\"Qwen3.8\",\"features\":[\"reasoning\",\"tool-calling\",\"long-context\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\"],\"kind\":\"llm\",\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"estimate\",\"minVramGb\":21,\"minimumVramEstimateGb\":21,\"modelId\":\"qwen3.8-27b-q4_k_m\",\"notes\":\"bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.8-27B (quantized with llama.cpp b10419). GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 64 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"f0eec4a4bb4975114a030d048952d83c0a53c034\",\"size\":\"27B\",\"source\":\"https://huggingface.co/bartowski/Qwen3.8-27B-GGUF\",\"storageGb\":17.77,\"systemMemoryGb\":64,\"trust\":\"qualified\",\"version\":\"3.8\"}]},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nllm   | qwen3.5-4b-q4_k_m                      | size=4B         | plan_min=  5 GB measured | fit=fits     | storage=3.01 GB | status=open\n      in=text out=text features=text-generation,tool-calling\n      catch: Apache-2.0. Text only; no vision projector or image/video input.\nllm   | qwen3.6-35b-a3b-iq4_nl_xl              | size=35B-A3B    | plan_min= 24 GB estimate | fit=fits     | storage=20.40 GB | status=open\n      in=text,image out=text features=reasoning,tool-calling,long-context,mixture-of-experts\n      catch: Apache-2.0. Mixture-of-experts: 35B parameters, 3B active per token. Text and image input through the pinned F16 vision projector.\nllm   | qwen3.8-27b-q4_k_m                     | size=27B        | plan_min= 21 GB estimate | fit=fits     | storage=17.77 GB | status=open\n      in=text out=text features=reasoning,tool-calling,long-context\n      catch: Apache-2.0. Text only; no vision projector or image/video input.\nplan_min: LocalBase's planning minimum is the estimated or measured accelerator demand at the stated launch settings plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement, and other settings or machines need different amounts. Each figure is at the model's reference launch (LLMs: up to an 8,192-token context, 1 request at a time); \"measured\" figures were recorded on Apple M-series 64 GiB, macOS 26. Run \"local-base models show \u003cid\u003e\" for the exact settings.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "recommend",
+        "--vram",
+        "16"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"kind\":\"llm\",\"models\":[{\"artifacts\":[{\"expectedSizeBytes\":3013027808,\"filename\":\"Qwen_Qwen3.5-4B-Q4_K_M.gguf\",\"role\":\"primary\",\"sha256\":\"13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983\",\"sourcePath\":\"Qwen_Qwen3.5-4B-Q4_K_M.gguf\"}],\"capabilities\":[{\"id\":\"text-generation\",\"source\":\"declared\"},{\"id\":\"tool-calling\",\"source\":\"declared\"}],\"catch\":\"Apache-2.0. Text only; no vision projector or image/video input.\",\"commercialStatus\":\"open\",\"contextWindowTokens\":262144,\"displayName\":\"Qwen3.5 4B\",\"family\":\"Qwen3.5\",\"features\":[\"text-generation\",\"tool-calling\"],\"fitVerdict\":\"fits\",\"inputModalities\":[\"text\"],\"kind\":\"llm\",\"memoryLaunchShape\":\"ctx=8192;slots=1;kv=q8_0/q8_0\",\"memorySource\":\"measured\",\"minVramGb\":5,\"minimumVramEstimateGb\":5,\"modelId\":\"qwen3.5-4b-q4_k_m\",\"notes\":\"bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-4B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned.\",\"observedPeakBytes\":null,\"outputModalities\":[\"text\"],\"provider\":\"Qwen\",\"qualificationState\":\"qualified\",\"quant\":\"Q4_K_M\",\"repositoryRevision\":\"4168f45a16a1290d65a4ec0fa312ae917a4c15d6\",\"size\":\"4B\",\"source\":\"https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF\",\"storageGb\":3.01,\"systemMemoryGb\":16,\"version\":\"3.5\"}],\"vramGb\":16},\"ok\":true}\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nRecommended LLM models for \u003c= 16GB VRAM:\n- qwen3.5-4b-q4_k_m (3.01 GB, planning min 5 GB measured, features=text-generation/tool-calling)\n"
+    },
+    {
+      "args": [
+        "models",
+        "show",
+        "whisper-small-q8_0"
+      ],
+      "code": 2,
+      "stdout": "",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: Unknown model id: whisper-small-q8_0\nShow everything known about one model\n\nUSAGE local-base models show [OPTIONS] \u003cmodelId\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n\nEXAMPLES\n\n  local-base models show qwen3.5-4b-q4_k_m\n  local-base --json models show whisper-large-v3-turbo\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "models",
+        "show",
+        "qwen2.5-coder-3b-instruct-q4_k_m"
+      ],
+      "code": 2,
+      "stdout": "",
+      "stderr": "Read a copy of this root's database, as it stood just now.\nError: Unknown model id: qwen2.5-coder-3b-instruct-q4_k_m\nShow everything known about one model\n\nUSAGE local-base models show [OPTIONS] \u003cmodelId\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n\nEXAMPLES\n\n  local-base models show qwen3.5-4b-q4_k_m\n  local-base --json models show whisper-large-v3-turbo\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "models",
+        "show",
+        "community-tiny-stt"
+      ],
+      "code": 0,
+      "stdout": "Community Tiny\n  ID:             community-tiny-stt\n  Type:           Transcription\n  Status:         Not installed · Disabled\n  License:        Commercial use OK\n  Catalog:        Community catalog, not qualified · Remote catalog (http://127.0.0.1:\u003cport\u003e/feed.json#models[0])\n  Publisher:      Community\n  Source:         https://huggingface.co/community/tiny (revision bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)\n  Context length: Not applicable\n  Quantization:   Q8_0\n  Summary:        Community entry.\n  Notes:          From the test feed.\n\nFiles\n  ggml-community-tiny.bin · 4 KB\n\nCapabilities\n  Speech to text · Listed in the catalog\n\nMemory\n  Planning min:   1 GB (estimate)\n  Estimate: 0.2 GB with standard settings (formula estimate, not measured)\n  This machine:   Fits, 63 GB to spare of 64 GB\n  Note:           LocalBase's planning minimum is the estimated or measured accelerator demand at the stated launch settings plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement, and other settings or machines need different amounts.\n\nFrom the catalog feed\n  Status:         Verified by LocalBase\n  Published for:  community/tiny · ggml-community-tiny.bin at bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
+      "stderr": "Read a copy of this root's database, as it stood just now.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "use",
+        "http://127.0.0.1:\u003cport\u003e/broken.json"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/broken.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":null,\"revision\":null,\"stale\":true,\"lastError\":null,\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "Using the feed at http://127.0.0.1:\u003cport\u003e/broken.json.\nRun `local-base models feed refresh` to download it now; a running gateway checks within the hour.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "refresh"
+      ],
+      "code": 1,
+      "stdout": "{\"data\":{\"error\":\"The feed's sha256 does not match its contents; it was truncated or altered.\",\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/broken.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":\"\u003ctime\u003e\",\"revision\":null,\"stale\":true,\"lastError\":\"The feed's sha256 does not match its contents; it was truncated or altered.\",\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0},\"outcome\":\"failed\"},\"ok\":true}\n",
+      "stderr": "The feed could not be refreshed: The feed's sha256 does not match its contents; it was truncated or altered. The built-in catalog stays in use.\nFeed:      http://127.0.0.1:\u003cport\u003e/broken.json (set with `local-base models feed use`)\nFetched:   Never; the built-in catalog is in use\nChecked:   \u003ctime\u003e\nLast error: The feed's sha256 does not match its contents; it was truncated or altered.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "status"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":true,\"url\":\"http://127.0.0.1:\u003cport\u003e/broken.json\",\"source\":\"settings\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":\"\u003ctime\u003e\",\"revision\":null,\"stale\":true,\"lastError\":\"The feed's sha256 does not match its contents; it was truncated or altered.\",\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "Feed:      http://127.0.0.1:\u003cport\u003e/broken.json (set with `local-base models feed use`)\nFetched:   Never; the built-in catalog is in use\nChecked:   \u003ctime\u003e\nLast error: The feed's sha256 does not match its contents; it was truncated or altered.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "use",
+        "off"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":false,\"url\":null,\"source\":\"settings\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":null,\"revision\":null,\"stale\":false,\"lastError\":null,\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "The remote catalog feed is off. Only the built-in and user catalogs load.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "status"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":false,\"url\":null,\"source\":\"settings\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":null,\"revision\":null,\"stale\":false,\"lastError\":null,\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "Feed:      Off (set with `local-base models feed use`)\n"
+    },
+    {
+      "args": [
+        "--json",
+        "models",
+        "feed",
+        "use",
+        "default"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"feed\":{\"enabled\":true,\"url\":\"https://raw.githubusercontent.com/timsexperiments/LocalBase/main/catalog/feed-v2.json\",\"source\":\"default\",\"problem\":null,\"fetchedAt\":null,\"checkedAt\":null,\"revision\":null,\"stale\":true,\"lastError\":null,\"entries\":0,\"builtIn\":0,\"added\":[],\"skipped\":0,\"schemaVersion\":null,\"annotations\":0,\"annotationsSkipped\":0}},\"ok\":true}\n",
+      "stderr": "Using the published LocalBase feed.\nRun `local-base models feed refresh` to download it now; a running gateway checks within the hour.\n"
+    }
+  ]
+}

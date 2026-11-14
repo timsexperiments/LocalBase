@@ -175,13 +175,26 @@ func readCollectorFile(t *testing.T, path string) *collector {
 // real collector parsed them, give the same span trees and request records;
 // the Go export is accepted without a reported failure.
 func TestRealCollector(t *testing.T) {
-	harness.RequireTS(t)
+	// Its Go checks (spans and records reach a real collector, no export failure) run without TS;
+	// the comparison of the trees runs when TS does. The trees themselves are pinned by
+	// TestDifferentialOTLP.
+	switch harness.Impl() {
+	case "both":
+		harness.RequireTS(t)
+	case "go":
+	default:
+		t.Skip("checks Go's export")
+	}
 	bin := os.Getenv("LOCALBASE_CONTRACT_OTELCOL")
 	if bin == "" {
 		t.Skip("set LOCALBASE_CONTRACT_OTELCOL to a pinned otelcol binary")
 	}
 	runs := map[string]*otlpRun{}
-	for _, impl := range []string{"ts", "go"} {
+	impls := []string{"go"}
+	if tsLive() {
+		impls = append(impls, "ts")
+	}
+	for _, impl := range impls {
 		endpoint, out, stop := startOtelcol(t, bin)
 		run := runOTLPAt(t, impl, endpoint)
 		time.Sleep(1500 * time.Millisecond) // the file exporter's flush
@@ -198,11 +211,14 @@ func TestRealCollector(t *testing.T) {
 		runs[impl] = run
 	}
 	labels := []string{"models", "unmatched", "missing", "invalid"}
-	if runs["ts"].real && runs["go"].real {
+	if runs["ts"] != nil && runs["ts"].real && runs["go"].real {
 		labels = append(labels, "chat")
 	}
 	t.Logf("comparing %v", labels)
 	for _, label := range labels {
+		if runs["ts"] == nil {
+			break // the trees are compared only with TS
+		}
 		a, b := runs["ts"].tree(runs["ts"].requests[label]), runs["go"].tree(runs["go"].requests[label])
 		if a == nil || b == nil {
 			t.Errorf("%s: no server span (ts %v, go %v)", label, a != nil, b != nil)

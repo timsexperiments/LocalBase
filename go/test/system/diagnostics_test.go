@@ -55,7 +55,7 @@ func diagnosticsLog() string {
 // captured stderr: the manifests and redacted logs match, and no planted
 // secret reaches either archive.
 func TestCLIDiagnostics(t *testing.T) {
-	harness.RequireTS(t)
+	pinned(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	initOwnTwinRoots(t, roots)
@@ -114,7 +114,7 @@ func TestCLIDiagnostics(t *testing.T) {
 		}
 	}
 	var notices readCopyNotices // Go's read-copy notice is a named difference
-	if strings.ReplaceAll(tres.stderr, ts, "<root>") != strings.ReplaceAll(strings.ReplaceAll(notices.strip(gres.stderr), gr, "<root>"), "go.zip", "ts.zip") {
+	if strings.ReplaceAll(notices.stripTwin(tres.stderr), ts, "<root>") != strings.ReplaceAll(strings.ReplaceAll(notices.strip(gres.stderr), gr, "<root>"), "go.zip", "ts.zip") {
 		t.Errorf("human output:\n ts %s\n go %s", tres.stderr, gres.stderr)
 	}
 	notices.expectSeen(t)
