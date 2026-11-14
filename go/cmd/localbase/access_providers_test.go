@@ -10,8 +10,8 @@ import (
 )
 
 // The provider commands say why a change was refused in their own words, which the plan cores in
-// internal/auth leave to them, and a refused change writes nothing. (The contract suite compares
-// the same words with TS's, under -impl=both.)
+// internal/auth leave to them, and a refused change writes nothing. (The contract suite's
+// TestCLIAccess pins them, as R3a recorded them where they matched TS's.)
 func TestProviderCommandsSayWhyAChangeWasRefused(t *testing.T) {
 	t.Setenv("LOCALBASE_ROOT", "")
 	t.Setenv("PROVIDERS_TEST_SMTP_PASSWORD", "pw")

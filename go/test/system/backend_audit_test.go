@@ -9,16 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // On the host too: registering, removing and choosing a backend are on record, by id. The
 // command a backend runs is not logged, since a path can hold a name.
 func TestBackendChangesFromTheCommandLineAreAudited(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
 	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {

@@ -5,16 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A value on a command line can be read by anyone on this computer while the command runs, and stays
 // in the shell's history. configure says so, and says what to do instead, without repeating the value.
 func TestASecretOnTheCommandLineGetsAWarning(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	const planted = "planted-secret-value"
 	for _, c := range []struct {
 		name string

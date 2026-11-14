@@ -16,14 +16,13 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A real OpenTelemetry Collector (LOCALBASE_CONTRACT_OTELCOL: a pinned
-// otelcol binary, core distribution) receives each gateway's export on a
-// test port and writes what it parsed with its file exporter. The exports
-// are compared as the collector understood them, independent of this
+// otelcol binary, core distribution) receives the gateway's export on a
+// test port and writes what it parsed with its file exporter. The export
+// is checked as the collector understood it, independent of this
 // repository's decoder. Never the live collector on 127.0.0.1:4318.
 
 const otelcolVersion = "0.163.1" // otelcol_0.163.1_darwin_arm64.tar.gz, sha256 664047e6…d665d8d3
@@ -171,67 +170,31 @@ func readCollectorFile(t *testing.T, path string) *collector {
 	return col
 }
 
-// TestRealCollector: both gateways' exports for the same requests, as a
-// real collector parsed them, give the same span trees and request records;
-// the Go export is accepted without a reported failure.
+// TestRealCollector: the export reaches a real collector, which parses a server span for each
+// request and the request records, and no export failure is reported. The trees themselves are
+// pinned by TestDifferentialOTLP (until step 7 they were compared with TS's here too).
 func TestRealCollector(t *testing.T) {
-	// Its Go checks (spans and records reach a real collector, no export failure) run without TS;
-	// the comparison of the trees runs when TS does. The trees themselves are pinned by
-	// TestDifferentialOTLP.
-	switch harness.Impl() {
-	case "both":
-		harness.RequireTS(t)
-	case "go":
-	default:
-		t.Skip("checks Go's export")
-	}
 	bin := os.Getenv("LOCALBASE_CONTRACT_OTELCOL")
 	if bin == "" {
 		t.Skip("set LOCALBASE_CONTRACT_OTELCOL to a pinned otelcol binary")
 	}
-	runs := map[string]*otlpRun{}
-	impls := []string{"go"}
-	if tsLive() {
-		impls = append(impls, "ts")
+	endpoint, out, stop := startOtelcol(t, bin)
+	run := runOTLPAt(t, "go", endpoint)
+	time.Sleep(1500 * time.Millisecond) // the file exporter's flush
+	stop()
+	run.col = readCollectorFile(t, out)
+	if len(run.col.spans()) == 0 || len(run.col.records()) == 0 {
+		t.Fatalf("the collector wrote no spans or records")
 	}
-	for _, impl := range impls {
-		endpoint, out, stop := startOtelcol(t, bin)
-		run := runOTLPAt(t, impl, endpoint)
-		time.Sleep(1500 * time.Millisecond) // the file exporter's flush
-		stop()
-		run.col = readCollectorFile(t, out)
-		if len(run.col.spans()) == 0 || len(run.col.records()) == 0 {
-			t.Fatalf("%s: the collector wrote no spans or records", impl)
-		}
-		for _, e := range localEvents(t, run.root) {
-			if strings.HasPrefix(fmt.Sprint(e["eventName"]), "observability.export") {
-				t.Errorf("%s: export failure against a real collector: %v", impl, e)
-			}
-		}
-		runs[impl] = run
-	}
-	labels := []string{"models", "unmatched", "missing", "invalid"}
-	if runs["ts"] != nil && runs["ts"].real && runs["go"].real {
-		labels = append(labels, "chat")
-	}
-	t.Logf("comparing %v", labels)
-	for _, label := range labels {
-		if runs["ts"] == nil {
-			break // the trees are compared only with TS
-		}
-		a, b := runs["ts"].tree(runs["ts"].requests[label]), runs["go"].tree(runs["go"].requests[label])
-		if a == nil || b == nil {
-			t.Errorf("%s: no server span (ts %v, go %v)", label, a != nil, b != nil)
-			continue
-		}
-		skip := func(p string) bool {
-			return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms")
-		}
-		if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
-			t.Errorf("%s span tree differs (as the collector parsed it):\n  %s", label, strings.Join(d, "\n  "))
+	for _, e := range localEvents(t, run.root) {
+		if strings.HasPrefix(fmt.Sprint(e["eventName"]), "observability.export") {
+			t.Errorf("export failure against a real collector: %v", e)
 		}
 	}
-	for impl, run := range runs {
-		run.checkRecords(t, impl)
+	for _, label := range []string{"models", "unmatched", "missing", "invalid"} {
+		if run.tree(run.requests[label]) == nil {
+			t.Errorf("%s: no server span as the collector parsed it", label)
+		}
 	}
+	run.checkRecords(t, "go")
 }

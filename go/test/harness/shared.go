@@ -100,16 +100,6 @@ func FreeMemoryReading() string {
 	return "unavailable"
 }
 
-// RequireTS skips a test that compares with the TypeScript gateway unless -impl=both.
-func RequireTS(t *testing.T) {
-	if _, err := exec.LookPath("bun"); err != nil {
-		t.Skip("bun is not installed")
-	}
-	if Impl() != "both" {
-		t.Skip("run with -impl=both")
-	}
-}
-
 // VoiceClip is a 4 s 16 kHz PCM16 WAV of deterministic noise.
 func VoiceClip(seed uint32) []byte {
 	const frames = 64000

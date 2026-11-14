@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -17,9 +16,6 @@ import (
 // file and what to do, leaves the target alone, and doctor reports the same without
 // starting anything. Removing it lets the gateway start.
 func TestPlantedLogLinkRefusesToStart(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	root := filepath.Join(tmp, "root")
 	e := &e2e{t: t, root: root, outDir: tmp, noAuth: true}

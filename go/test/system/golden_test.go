@@ -16,19 +16,16 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// The pinned CLI tests. Each of these compared the Go command line with TS's under -impl=both and
-// tested nothing else, so before TypeScript is retired (step 7's R3a) they also pin Go's own
-// results (harness.Pins says where). Where a test pins, its Go CLI runs:
+// The pinned CLI tests. Each of these compared the Go command line with TS's and tested nothing
+// else, so step 7's R3a pinned Go's own results while TS still agreed with them, and R3b removed
+// TS. A pinned test's Go CLI runs (harness.Pins says where):
 //
-//   - as the localbase_lab build on harness.FixedHostJSON's 64 GiB unified host, so what depends
-//     on the host's memory (fit verdicts, systemMemoryGb, what --fits lists) is the same on every
+//   - as the localbase_lab build on harness.FixedHostJSON's 64 GiB host, so what depends on the
+//     host's memory (fit verdicts, systemMemoryGb, what --fits lists) is the same on every
 //     runner. The lab build differs from the release only in that host seam, which
 //     TestLabSeamFilesAreTagged holds to localbase_lab files;
 //   - are recorded, normalized and in order, as the test's transcript, and compared with
-//     testdata/golden/<Test>.json.
-//
-// Under -impl=go, TS's twin runs are played by Go itself and the transcript is the pin. Where a
-// test doesn't pin, its Go CLI is the release build on this machine, as before the pins.
+//     testdata/golden/<platform>/<Test>.json.
 
 // transcriptCall is one Go CLI run of a pinned test, normalized (scrub).
 type transcriptCall struct {
@@ -44,7 +41,6 @@ type pin struct {
 	host string // the fixed host's file
 	want []transcriptCall
 	got  []transcriptCall
-	twin map[string]bool // the TS roots twinRoots made
 }
 
 var pins sync.Map // top-level test name -> *pin
@@ -58,36 +54,29 @@ func pinOf(t testing.TB) *pin {
 }
 
 // pinnedFixture starts a test that pins values (harness.PinValues) and launches gateways: it
-// returns the launch options that put them on the golden fixture where the test pins, and none
-// where it doesn't.
+// returns the launch options that put them on the golden fixture.
 func pinnedFixture(t *testing.T) []harness.Option {
 	t.Helper()
-	if harness.PinValues(t) {
-		return []harness.Option{harness.GoldenFixture()}
-	}
-	return nil
+	harness.PinValues(t)
+	return []harness.Option{harness.GoldenFixture()}
 }
-
-// tsLive is whether TS itself runs: under -impl=go a pinned test's TS twin is played by Go.
-func tsLive() bool { return harness.Impl() == "both" }
 
 // pinned starts a pinned CLI test: see the comment at the top of this file.
 func pinned(t *testing.T) {
 	t.Helper()
-	if !harness.Pins(t) {
-		return // TS live, compared with Go on this machine
-	}
+	harness.Pins(t)
 	update := os.Getenv(fsguard.UpdateGoldenEnv) == "1"
 	host := filepath.Join(fsguard.ScratchDir(t), "fixed-host.json")
-	if err := fsguard.WriteFile(host, []byte(harness.FixedHostJSON), 0o600); err != nil {
+	if err := fsguard.WriteFile(host, []byte(harness.FixedHostJSON()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p := &pin{host: host, twin: map[string]bool{}}
-	golden := filepath.Join("testdata", "golden", t.Name()+".json")
+	p := &pin{host: host}
+	name := filepath.Join(harness.GoldenDir(), t.Name()+".json")
+	golden := filepath.Join("testdata", "golden", name)
 	if !update {
 		b, err := os.ReadFile(golden)
 		if err != nil {
-			t.Fatalf("no golden for %s (%v): record it with -impl=both and %s=1", t.Name(), err, fsguard.UpdateGoldenEnv)
+			t.Fatalf("no golden for %s (%v): record it with %s=1", t.Name(), err, fsguard.UpdateGoldenEnv)
 		}
 		var g struct {
 			Calls []transcriptCall `json:"calls"`
@@ -102,13 +91,13 @@ func pinned(t *testing.T) {
 		pins.Delete(t.Name())
 		if update {
 			if t.Failed() {
-				t.Logf("%s not recorded: the test failed, so TS and Go did not agree", golden)
+				t.Logf("%s not recorded: the test failed", golden)
 				return
 			}
 			b, _ := json.MarshalIndent(struct {
 				Calls []transcriptCall `json:"calls"`
 			}{p.got}, "", "  ")
-			if err := fsguard.WriteGolden(t.Name()+".json", append(b, '\n')); err != nil {
+			if err := fsguard.WriteGolden(name, append(b, '\n')); err != nil {
 				t.Error(err)
 			}
 			return
@@ -117,18 +106,6 @@ func pinned(t *testing.T) {
 			t.Errorf("Go ran %d of the %d commands in %s; the first not run: %v", len(p.got), len(p.want), golden, p.want[len(p.got)].Args)
 		}
 	})
-}
-
-// ran takes one CLI run of a pinned test. Go's runs go into the transcript, except on a TS root
-// (twinRoots): under -impl=go Go plays TS there, so what Go reads in it isn't what TS made.
-func (p *pin) ran(t *testing.T, impl, root string, args []string, res cliResult) {
-	t.Helper()
-	p.mu.Lock()
-	twin := p.twin[root]
-	p.mu.Unlock()
-	if impl == "go" && !twin {
-		p.record(t, root, args, res)
-	}
 }
 
 // record adds one Go CLI run to the test's transcript and compares it with the golden's.
@@ -155,7 +132,7 @@ func (p *pin) record(t *testing.T, root string, args []string, res cliResult) {
 		return
 	}
 	if d := diffCall(p.want[i], call); d != "" {
-		t.Errorf("Go's command #%d (%v) differs from the golden:\n%s\nIf the change is intended, record again with -impl=both and %s=1.", i+1, call.Args, d, fsguard.UpdateGoldenEnv)
+		t.Errorf("Go's command #%d (%v) differs from the golden:\n%s\nIf the change is intended, record again with %s=1.", i+1, call.Args, d, fsguard.UpdateGoldenEnv)
 	}
 }
 

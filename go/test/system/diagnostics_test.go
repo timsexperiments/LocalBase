@@ -50,36 +50,31 @@ func diagnosticsLog() string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// TestCLIDiagnostics compares the bundles of both CLIs on twin roots with
-// logs, catalog patches and problems, a feed setting, OTLP environment and
-// captured stderr: the manifests and redacted logs match, and no planted
-// secret reaches either archive.
+// TestCLIDiagnostics makes a bundle of a root with logs, catalog patches and problems, a feed
+// setting, OTLP environment and captured stderr: its manifest and redacted log are pinned (they
+// were compared with TS's until step 7), and no planted secret reaches the archive.
 func TestCLIDiagnostics(t *testing.T) {
 	pinned(t)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
-	initOwnTwinRoots(t, roots)
-	for i, r := range roots {
-		fsguard.MkdirAll(filepath.Join(r, "logs"), 0o700)
-		fsguard.WriteFile(filepath.Join(r, "logs", "events.jsonl"), []byte(diagnosticsLog()), 0o600)
-		fsguard.WriteFile(filepath.Join(r, "logs", "service-stderr.log"), []byte("panic: stderrCrashSecret\n"), 0o600)
-		fsguard.MkdirAll(filepath.Join(r, "catalog.d"), 0o700)
-		fsguard.WriteFile(filepath.Join(r, "catalog.d", "patch.json"), []byte(`{"modelId": "whisper-base-q8_0", "notes": "Patched.",
-			"repositoryRevision": "`+strings.Repeat("e", 40)+`"}`), 0o600)
-		fsguard.WriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen3.5-4b-q4_k_m", "storageGb": "big"}`), 0o600)
-		plantPrivateState(t, r)
-		if i == 0 {
-			toRollbackJournal(t, r)
-		}
-	}
+	harness.PinValues(t)
+	gr := cliRoot(t)
+	initRoot(t, gr)
+	r := gr
+	fsguard.MkdirAll(filepath.Join(r, "logs"), 0o700)
+	fsguard.WriteFile(filepath.Join(r, "logs", "events.jsonl"), []byte(diagnosticsLog()), 0o600)
+	fsguard.WriteFile(filepath.Join(r, "logs", "service-stderr.log"), []byte("panic: stderrCrashSecret\n"), 0o600)
+	fsguard.MkdirAll(filepath.Join(r, "catalog.d"), 0o700)
+	fsguard.WriteFile(filepath.Join(r, "catalog.d", "patch.json"), []byte(`{"modelId": "whisper-base-q8_0", "notes": "Patched.",
+		"repositoryRevision": "`+strings.Repeat("e", 40)+`"}`), 0o600)
+	fsguard.WriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen3.5-4b-q4_k_m", "storageGb": "big"}`), 0o600)
+	plantPrivateState(t, r)
 	env := []string{"LOCALBASE_CATALOG_FEED_URL=https://user:feedUserPassword@feed.example.com/feed.json?sig=feedSignature99#frag",
 		"OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example:4318/base/", "OTEL_EXPORTER_OTLP_HEADERS=x-auth=otlpHeaderSecret77"}
 	out := fsguard.ScratchDir(t)
-	bundle := func(impl, root, name string) (cliResult, map[string][]byte) {
+	bundle := func(root, name string) (cliResult, map[string][]byte) {
 		path := filepath.Join(out, name)
-		res := runCLIEnv(t, impl, root, env, "--json", "diagnostics", "--output", path)
+		res := runCLIEnv(t, "go", root, env, "--json", "diagnostics", "--output", path)
 		if res.code != 0 {
-			t.Fatalf("%s diagnostics: %d %s %s", impl, res.code, res.stdout, res.stderr)
+			t.Fatalf("diagnostics: %d %s %s", res.code, res.stdout, res.stderr)
 		}
 		zr, err := zip.OpenReader(path)
 		if err != nil {
@@ -96,42 +91,26 @@ func TestCLIDiagnostics(t *testing.T) {
 		for _, s := range diagnosticsSecrets {
 			for name, b := range files {
 				if strings.Contains(string(b), s) {
-					t.Errorf("%s: %s holds %q", impl, name, s)
+					t.Errorf("%s holds %q", name, s)
 				}
 			}
 			if strings.Contains(string(raw), s) || strings.Contains(res.stdout+res.stderr, s) {
-				t.Errorf("%s: the archive or output holds %q", impl, s)
+				t.Errorf("the archive or output holds %q", s)
 			}
 		}
 		return res, files
 	}
-	tres, tfiles := bundle("ts", ts, "ts.zip")
-	gres, gfiles := bundle("go", gr, "go.zip")
-	if a, b := normalize(t, strings.ReplaceAll(tres.stdout, "ts.zip", "X.zip"), ts), normalize(t, strings.ReplaceAll(gres.stdout, "go.zip", "X.zip"), gr); true {
-		skip := func(p string) bool { return p == ".data.archive.bytes" }
-		if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
-			t.Errorf("envelope differs:\n  %s", strings.Join(d, "\n  "))
-		}
+	_, gfiles := bundle(gr, "go.zip")
+	if len(gfiles) != 2 {
+		t.Fatalf("entries: %d", len(gfiles))
 	}
-	var notices readCopyNotices // Go's read-copy notice is a named difference
-	if strings.ReplaceAll(notices.stripTwin(tres.stderr), ts, "<root>") != strings.ReplaceAll(strings.ReplaceAll(notices.strip(gres.stderr), gr, "<root>"), "go.zip", "ts.zip") {
-		t.Errorf("human output:\n ts %s\n go %s", tres.stderr, gres.stderr)
-	}
-	notices.expectSeen(t)
-	if len(tfiles) != 2 || len(gfiles) != 2 {
-		t.Fatalf("entries: ts %d, go %d", len(tfiles), len(gfiles))
-	}
-	if string(tfiles["logs/events.jsonl"]) != string(gfiles["logs/events.jsonl"]) {
-		t.Errorf("logs differ:\n ts %s\n go %s", tfiles["logs/events.jsonl"], gfiles["logs/events.jsonl"])
-	}
-	compareManifests(t, tfiles["manifest.json"], gfiles["manifest.json"])
+	harness.PinJSON(t, "redacted log", strings.Split(scrub(string(gfiles["logs/events.jsonl"]), gr, nil, nil), "\n"))
+	pinManifest(t, "manifest", gfiles["manifest.json"], gr)
 
-	// A root that was never initialized: every root-backed section is
-	// unavailable on both.
-	fresh := [2]string{filepath.Join(filepath.Dir(ts), "none-ts"), filepath.Join(filepath.Dir(gr), "none-go")}
-	_, tf := bundle("ts", fresh[0], "ts-none.zip")
-	_, gf := bundle("go", fresh[1], "go-none.zip")
-	compareManifests(t, tf["manifest.json"], gf["manifest.json"])
+	// A root that was never initialized: every root-backed section is unavailable.
+	fresh := filepath.Join(filepath.Dir(gr), "none-go")
+	_, gf := bundle(fresh, "go-none.zip")
+	pinManifest(t, "manifest of a root never initialized", gf["manifest.json"], fresh)
 
 	// Output rules.
 	fsguard.WriteFile(filepath.Join(out, "exists.zip"), []byte("x"), 0o600)
@@ -141,7 +120,7 @@ func TestCLIDiagnostics(t *testing.T) {
 		{"--json", "diagnostics", "--output", filepath.Join(out, "missing-dir", "x.zip")},
 		{"--json", "diagnostics", "--output", ""},
 	} {
-		compareCLI(t, roots, cliCase{args: args})
+		runCase(t, gr, args...)
 	}
 	if b, _ := os.ReadFile(filepath.Join(out, "exists.zip")); string(b) != "x" {
 		t.Error("an existing output was replaced")
@@ -154,64 +133,26 @@ func TestCLIDiagnostics(t *testing.T) {
 	}
 }
 
-func compareManifests(t *testing.T, a, b []byte) {
+// pinManifest pins a bundle's manifest, normalized as the transcripts are (scrub), without when it
+// was made and by which build, and checks it is JSON.stringify(manifest, null, 2) plus a newline.
+func pinManifest(t *testing.T, name string, raw []byte, root string) {
 	t.Helper()
-	var x, y any
-	if err := json.Unmarshal(a, &x); err != nil {
-		t.Fatalf("ts manifest: %v", err)
+	if string(raw[:2]) != "{\n" || !strings.HasSuffix(string(raw), "}\n") {
+		t.Errorf("%s is not JSON.stringify(manifest, null, 2) + newline", name)
 	}
-	if err := json.Unmarshal(b, &y); err != nil {
-		t.Fatalf("go manifest: %v", err)
+	var v any
+	if err := json.Unmarshal([]byte(scrub(string(raw), root, nil, nil)), &v); err != nil {
+		t.Fatalf("%s: %v", name, err)
 	}
-	skip := func(p string) bool {
+	harness.PinJSON(t, name, harness.PruneJSON(v, "", func(p string) bool {
 		return p == ".generatedAt" || p == ".version" || p == ".logs.data.serviceStderr.modifiedAt" // written separately
-	}
-	if d := harness.DiffJSON("", x, y, skip); len(d) > 0 {
-		t.Errorf("manifests differ:\n  %s\nts %s\ngo %s", strings.Join(d, "\n  "), a, b)
-	}
-	if string(a[:2]) != "{\n" || string(b[:2]) != "{\n" || !strings.HasSuffix(string(b), "}\n") {
-		t.Error("the manifest is not JSON.stringify(manifest, null, 2) + newline")
-	}
+	}))
 }
 
 // plantPrivateState writes secrets where M3.5 and M4 keep private state: a
 // download auth profile, an imported model whose source is a signed URL, a
 // custom voice whose display name is personal (logs carry its id only),
 // and a Go-only setting.
-// toRollbackJournal puts a TS root's database back on a rollback journal after plantPrivateState
-// wrote it through Go's store, which made it WAL (#647). TS opens its database read-only, and SQLite
-// refuses that for a WAL file with no -shm (tsCannotReadGoRoot). The switch is read back, and the
-// file's header is checked once the store is closed, so a store that turned WAL back on would fail
-// here rather than as an unreadable TS manifest.
-func toRollbackJournal(t *testing.T, root string) {
-	t.Helper()
-	db := filepath.Join(root, "local-base.db")
-	st, err := store.Open(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var mode string
-	if err := st.DB.QueryRow("PRAGMA journal_mode=DELETE").Scan(&mode); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.DB.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil || mode != "delete" {
-		t.Fatalf("the TS root's journal mode reads back as %q (%v), not delete", mode, err)
-	}
-	st.Close()
-	header := make([]byte, 20)
-	f, err := os.Open(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if _, err := io.ReadFull(f, header); err != nil {
-		t.Fatal(err)
-	}
-	if header[18] != 1 || header[19] != 1 { // 1, 1: a rollback journal; 2, 2: WAL
-		t.Fatalf("the TS root's database header says read/write versions %d/%d, not a rollback journal", header[18], header[19])
-	}
-}
-
 func plantPrivateState(t *testing.T, root string) {
 	t.Helper()
 	// A run checkpoint: in-flight model output (DESIGN §21.6).

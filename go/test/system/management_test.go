@@ -53,9 +53,6 @@ func (a *slowArtifact) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // as interrupted after a restart, not forgotten; the shutdown does not
 // wait for the download; installing again resumes the partial file.
 func TestInstallInterruptedByGatewayStop(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	for _, how := range []string{"sigterm", "sigkill"} {
 		t.Run(how, func(t *testing.T) {
 			data := make([]byte, 8<<20)
@@ -163,9 +160,6 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 // A failed install says why, in the operations API and on the command line, with
 // the old sentence unchanged. Go only: TS has one sentence for every cause.
 func TestInstallFailureReasonExposed(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }), false)
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}

@@ -2,7 +2,6 @@ package contract
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"slices"
 	"sort"
@@ -296,34 +295,18 @@ func TestChatCompletion(t *testing.T) {
 	})
 }
 
-// TestDifferentialModels compares the TS and Go /v1/models on identical
-// fixtures. Only meaningful with -impl=both.
+// TestDifferentialModels pins /v1/models on the golden fixture (it was compared with TS's until
+// step 7).
 func TestDifferentialModels(t *testing.T) {
-	ts, gw := pinnedTargets(t)
-	// Measured peaks come from two different processes; compare presence only.
-	volatile := func(m map[string]any) {
-		if mem, ok := m["memory"].(map[string]any); ok && mem["observed_peak_bytes"] != nil {
+	gw := pinnedTarget(t)
+	// A measured peak varies from process to process: its presence is pinned.
+	b := models(t, gw)
+	for i := range b {
+		if mem, ok := b[i]["memory"].(map[string]any); ok && mem["observed_peak_bytes"] != nil {
 			mem["observed_peak_bytes"] = "present"
 		}
 	}
-	b := models(t, gw)
-	for i := range b {
-		volatile(b[i])
-	}
 	harness.PinJSON(t, "/v1/models", b)
-	if ts == nil {
-		return
-	}
-	a := models(t, ts)
-	if len(a) != len(b) {
-		t.Fatalf("%s has %d models, %s has %d", ts.Name, len(a), gw.Name, len(b))
-	}
-	for i := range a {
-		volatile(a[i])
-		if !sameIgnoring(a[i], b[i]) {
-			t.Errorf("%v differs:\n%s: %s\n%s: %s", a[i]["id"], ts.Name, j(a[i]), gw.Name, j(b[i]))
-		}
-	}
 }
 
 func sameIgnoring(a, b map[string]any, keys ...string) bool {
@@ -455,12 +438,12 @@ func TestEmbeddings(t *testing.T) {
 	})
 }
 
-// TestDifferentialModelMetadata compares /_localbase/models between the two
-// implementations, apart from live host memory and runtime queue state.
+// TestDifferentialModelMetadata pins /_localbase/models on the golden fixture, apart from live
+// host memory and runtime queue state (it was compared with TS's until step 7).
 func TestDifferentialModelMetadata(t *testing.T) {
-	ts, gw := pinnedTargets(t)
+	gw := pinnedTarget(t)
 	volatile := func(p string) bool {
-		// device.placement is Go only (CPU/GPU placement, DESIGN §20).
+		// device.placement (CPU/GPU placement, DESIGN §20) was Go's alone, so R3a's goldens leave it out.
 		return p == ".host.memory.system.availableBytes" || strings.HasSuffix(p, ".device.runtime") || strings.Contains(p, ".device.placement") ||
 			strings.Contains(p, ".observedPeaks") || strings.Contains(p, ".memory.observed") ||
 			strings.HasSuffix(p, ".memory.demandBytes") || strings.HasSuffix(p, ".memory.minimumVramEstimateGb") ||
@@ -471,32 +454,9 @@ func TestDifferentialModelMetadata(t *testing.T) {
 		"/_localbase/models?kind=stt,tts&sort=size", "/_localbase/models?q=qwen%20coder", "/_localbase/models?capability=tool-calling&fit=fits,tight",
 		"/_localbase/models?installed=true", "/_localbase/models?sort=context&reverse=true", "/_localbase/models?license=open&sort=name",
 		"/_localbase/models?sort=fit", "/_localbase/models/no-such-model"} {
-		var bodies []any
-		var statuses []int
-		for _, tg := range []*harness.Target{ts, gw} {
-			if tg == nil {
-				continue
-			}
-			r := harness.Do(t, "GET", tg.BaseURL+path, harness.Bearer(tg.Key), "")
-			var v any
-			json.Unmarshal(r.Body, &v)
-			bodies, statuses = append(bodies, v), append(statuses, r.Status)
-		}
-		// Go's answer, pinned without what the comparison with TS skips as volatile: live
-		// availability and runtime state, and what follows them.
-		harness.PinJSON(t, path, map[string]any{"status": statuses[len(statuses)-1], "body": harness.PruneJSON(bodies[len(bodies)-1], "", volatile)})
-		if ts == nil {
-			continue
-		}
-		if statuses[0] != statuses[1] {
-			t.Errorf("%s: status %d vs %d", path, statuses[0], statuses[1])
-			continue
-		}
-		if d := harness.DiffJSON("", bodies[0], bodies[1], volatile); len(d) > 0 {
-			if len(d) > 15 {
-				d = append(d[:15], fmt.Sprintf("... %d more", len(d)-15))
-			}
-			t.Errorf("%s differs (%s vs %s):\n  %s", path, ts.Name, gw.Name, strings.Join(d, "\n  "))
-		}
+		r := harness.Do(t, "GET", gw.BaseURL+path, harness.Bearer(gw.Key), "")
+		var v any
+		json.Unmarshal(r.Body, &v)
+		harness.PinJSON(t, path, map[string]any{"status": r.Status, "body": harness.PruneJSON(v, "", volatile)})
 	}
 }

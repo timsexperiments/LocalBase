@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -14,9 +13,6 @@ import (
 // §13.6): it applies a change that leaves nobody able to manage access, and
 // says so on stderr; a change that keeps a manager stays quiet.
 func TestCLIAccessRecovery(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go CLI")
-	}
 	root := filepath.Join(fsguard.ScratchDir(t), "root")
 	policy := filepath.Join(fsguard.ScratchDir(t), "policy.json")
 	fsguard.WriteFile(policy, []byte(`{"roles":[{"name":"admin","description":"","permissions":["access:manage","access:read"]},`+

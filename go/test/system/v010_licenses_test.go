@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -14,9 +13,6 @@ import (
 // THIRD_PARTY_NOTICES.txt. Everyone who followed its instructions has this, and every
 // command used to refuse it as nonempty.
 func TestRootFromV010Installer(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	for _, first := range [][]string{
 		{"--non-interactive", "init"},
 		{"--non-interactive", "configure", "--defaults"},

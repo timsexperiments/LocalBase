@@ -4,7 +4,7 @@
 // writes go through fsguard. It is for test packages only: no non-test file outside go/test
 // and go/tools may import it (TestNoProductionImports).
 //
-// The flags -impl, -url, -key and -keyless-key are registered here, so every test binary that
+// The flags -url, -key and -keyless-key are registered here, so every test binary that
 // imports the harness takes them. go/test/contract's package doc lists them and the environment.
 //
 // The shared targets are launched by the first test that asks for them, once per test binary,
@@ -37,7 +37,6 @@ import (
 )
 
 var (
-	implFlag   = flag.String("impl", "go", "go | ts | both")
 	urlFlag    = flag.String("url", "", "test an already running gateway at this base URL")
 	keyFlag    = flag.String("key", "", "with -url: a key with default scopes")
 	narrowFlag = flag.String("keyless-key", "", "with -url: a key with only inference:chat")
@@ -94,9 +93,6 @@ var shared = &sharedTargets{}
 // without a gateway.
 var launchShared = launchTargets
 
-// Impl is the -impl flag: go, ts or both.
-func Impl() string { return *implFlag }
-
 // Targets returns the shared targets, launching them on the first call. A launch failure fails
 // every test that asks, with the launch's error.
 func Targets(t testing.TB) []*Target {
@@ -125,7 +121,7 @@ func run(tests func() int) int {
 	return tests()
 }
 
-// launchTargets launches what -url or -impl asks for.
+// launchTargets launches the gateway -url names, or one of its own.
 func launchTargets() ([]*Target, error) {
 	if *urlFlag != "" {
 		// The key may come from the environment, so it never appears on a command line.
@@ -134,26 +130,15 @@ func launchTargets() ([]*Target, error) {
 		}
 		return []*Target{{Name: "external", BaseURL: strings.TrimRight(*urlFlag, "/"), Key: *keyFlag, ChatOnly: *narrowFlag}}, nil
 	}
-	impls := []string{*implFlag}
-	if *implFlag == "both" {
-		impls = []string{"ts", "go"}
+	t, err := Launch()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "launch go: %v\n", err)
+		return nil, fmt.Errorf("launch go: %v", err)
 	}
-	var targets []*Target
-	for _, impl := range impls {
-		t, err := Launch(impl)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "launch %s: %v\n", impl, err)
-			for _, t := range targets {
-				t.stop()
-			}
-			return nil, fmt.Errorf("launch %s: %v", impl, err)
-		}
-		targets = append(targets, t)
-	}
-	return targets, nil
+	return []*Target{t}, nil
 }
 
-// Fixture builds a scratch root both implementations accept: marker, a
+// Fixture builds a scratch root the gateway accepts: marker, a
 // migrated database with a config row and two keys, the remote feed off,
 // and optionally the real chat model and llama-server package.
 //
@@ -250,7 +235,7 @@ func Fixture(dir string, llmPort int, opts ...Option) (key, chatOnly, admin stri
 		return "", "", "", false, err
 	}
 	// Active non-LLM models: sparse files at the expected sizes, which pass the
-	// install check of both implementations without real weights.
+	// install check without real weights.
 	cat, _ := catalog.LoadWithFormer()
 	for _, id := range []string{"whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m", "dreamshaper-8-lcm", "wan2.1-t2v-1.3b-q8_0"} {
 		spec := cat.ByID(id)
@@ -336,7 +321,7 @@ func Env(extra []string) Option { return func(o *options) { o.env = append(o.env
 // GoldenFixture makes Fixture the pinned tests' fixture (golden.go), the same on every run: it
 // reads none of the variables that add real models or runtimes (LOCALBASE_CONTRACT_MODELS and the
 // rest), and installs the chat model as a sparse file of its expected size, as Fixture does the
-// other modalities' models, so both implementations serve without its weights.
+// other modalities' models, so the gateway serves without its weights.
 func GoldenFixture() Option { return func(o *options) { o.golden = true } }
 
 // External is whether -url names a gateway the harness didn't launch.
@@ -352,23 +337,11 @@ func LabHost(path string) Option { return func(o *options) { o.labHost = path } 
 // memory: a CI runner is too small to admit a real model's estimate on the default reserve.
 func NoReserve() Option { return func(o *options) { o.noReserve = true } }
 
-// repoRoot is testutil.RepoRoot for code with no test to fail: its failure is an error.
-func repoRoot() (string, error) {
-	var f rootFailure
-	dir := testutil.RepoRoot(&f)
-	return dir, f.err
-}
-
-type rootFailure struct{ err error }
-
-func (f *rootFailure) Helper() {}
-
-func (f *rootFailure) Fatalf(format string, args ...any) { f.err = fmt.Errorf(format, args...) }
-
-// Launch launches a gateway of its own on a new fixture (Env adds environment entries).
-func Launch(impl string, opts ...Option) (*Target, error) {
+// Launch launches a Go gateway of its own on a new fixture (Env adds environment entries). Its
+// target is named "go", as the shared one is.
+func Launch(opts ...Option) (*Target, error) {
 	o := optionsOf(opts)
-	dir, err := fsguard.ScratchTemp("lbgo-contract-" + impl + "-")
+	dir, err := fsguard.ScratchTemp("lbgo-contract-go-")
 	if err != nil {
 		return nil, err
 	}
@@ -390,30 +363,15 @@ func Launch(impl string, opts ...Option) (*Target, error) {
 	var cmd *exec.Cmd
 	args := []string{"--root", rootDir, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
 		"--tts-port", fmt.Sprint(testutil.FreePort()), "--image-port", fmt.Sprint(testutil.FreePort()), "--video-port", fmt.Sprint(testutil.FreePort())}
-	if o.labHost != "" && impl != "go" {
-		return nil, fmt.Errorf("LabHost is for the Go gateway, not %q", impl)
+	bin := filepath.Join(dir, "local-base")
+	build := GoBuildArgs(bin)
+	if o.labHost != "" {
+		build = append([]string{build[0], "-tags", "localbase_lab"}, build[1:]...)
 	}
-	switch impl {
-	case "go":
-		bin := filepath.Join(dir, "local-base")
-		build := GoBuildArgs(bin)
-		if o.labHost != "" {
-			build = append([]string{build[0], "-tags", "localbase_lab"}, build[1:]...)
-		}
-		if out, err := exec.Command("go", build...).CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("build: %v %s", err, out)
-		}
-		cmd = exec.Command(bin, args...)
-	case "ts":
-		cmd = exec.Command("bun", append([]string{"run", "src/cli.ts"}, args...)...)
-		repo, err := repoRoot()
-		if err != nil {
-			return nil, err
-		}
-		cmd.Dir = repo
-	default:
-		return nil, fmt.Errorf("unknown impl %q", impl)
+	if out, err := exec.Command("go", build...).CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("build: %v %s", err, out)
 	}
+	cmd = exec.Command(bin, args...)
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "LOCALBASE_") && !strings.HasPrefix(kv, "HF_TOKEN=") {
 			cmd.Env = append(cmd.Env, kv)
@@ -467,12 +425,12 @@ func Launch(impl string, opts ...Option) (*Target, error) {
 		}
 		if time.Now().After(deadline) {
 			stop()
-			return nil, fmt.Errorf("%s gateway did not become healthy; log in %s", impl, filepath.Join(dir, "serve.log"))
+			return nil, fmt.Errorf("go gateway did not become healthy; log in %s", filepath.Join(dir, "serve.log"))
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	launched = true
-	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop, halt: halt}, nil
+	return &Target{Name: "go", BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop, halt: halt}, nil
 }
 
 // --- request helpers ---------------------------------------------------------

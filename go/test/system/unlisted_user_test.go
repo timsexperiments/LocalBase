@@ -20,21 +20,16 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestDifferentialUnlistedUser pins a deliberate difference (DESIGN §13.6 item 11):
-// a browser session the policy grants nothing. Go refuses it everywhere. TS applies
-// the permission only on routes that check again themselves, so models and inference
-// answer it. Fake backends only: no real model, no network.
+// TestDifferentialUnlistedUser holds a deliberate difference from TS (DESIGN §13.6 item 11): a
+// browser session the policy grants nothing is refused everywhere. TS applied the permission only
+// on routes that checked again themselves, so its models and inference answered it. Fake backends
+// only: no real model, no network.
 //
-// Sessions are written to the database, because neither binary can be made to trust
-// a fake HTTPS provider here. Neither implementation's sign-in consults the policy:
-// that part is from reading the code and, for Go, TestOIDCUnauthorizedEmail.
-//
-// Go's refusals are checked under -impl=go too; TS's answers, and the comparison, under
-// -impl=both.
+// Sessions are written to the database, because the binary can't be made to trust a fake HTTPS
+// provider here. Sign-in doesn't consult the policy: TestOIDCUnauthorizedEmail holds that.
 const unlistedModel = "contract-unlisted-llm"
 
 func TestDifferentialUnlistedUser(t *testing.T) {
-	eachCLI(t)
 	harness.LogFreeMemoryOnFailure(t)
 	const (
 		issuer = "https://accounts.google.com"
@@ -59,12 +54,10 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		status int
 		body   string
 	}
-	rootOf := map[string]string{}
 	run := func(impl string) map[string]answer {
 		t.Helper()
 		tmp := fsguard.ScratchDir(t)
 		rootDir := filepath.Join(tmp, "root")
-		rootOf[impl] = rootDir
 		if _, _, _, _, err := harness.Fixture(rootDir, testutil.FreePort()); err != nil {
 			t.Fatal(err)
 		}
@@ -132,9 +125,8 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		}
 		unlisted, listed, chatter := session("unlisted", "someone@example.com"), session("listed", "owner@example.com"), session("chatter", "chatter@example.com")
 		st.Close()
-		// The fake backends come first on PATH (TS finds its runtime there), and through
-		// the override for Go.
-		e := &e2e{t: t, root: rootDir, outDir: tmp, impl: impl,
+		// The fake backends come first on PATH, and through the override.
+		e := &e2e{t: t, root: rootDir, outDir: tmp,
 			env: []string{"PATH=" + bins + string(os.PathListSeparator) + harness.WithoutRealBackends(os.Getenv("PATH")), "LOCALBASE_LLAMA_SERVER=" + fake}}
 		e.serve()
 		defer e.stop()
@@ -171,16 +163,6 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		}
 	}
 	goImpl := run("go")
-	var ts map[string]answer
-	if tsLive() {
-		ts = run("ts")
-	}
-	// The same on both.
-	for _, name := range []string{"session", "access", "keys", "management"} {
-		if ts != nil && ts[name] != goImpl[name] {
-			t.Errorf("%s:\n ts %d %.300s\n go %d %.300s", name, ts[name].status, ts[name].body, goImpl[name].status, goImpl[name].body)
-		}
-	}
 	if s := goImpl["session"]; s.status != 200 || !strings.Contains(s.body, `"permissions":[]`) || !strings.Contains(s.body, `"authenticated":true`) {
 		t.Errorf("session: %d %s", s.status, s.body)
 	}
@@ -189,35 +171,14 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 			t.Errorf("%s: %d %s", name, goImpl[name].status, goImpl[name].body)
 		}
 	}
-	// Go refuses; TS lets it past the permission check. Go must never loosen this.
+	// Go refuses where TS let the session past the permission check. It must never loosen this.
 	for _, name := range []string{"models", "image", "chat", "role-can't-chat"} {
 		if goImpl[name].status != 403 {
 			t.Errorf("go %s: %d %.300s", name, goImpl[name].status, goImpl[name].body)
 		}
-		if ts != nil && (ts[name].status == 403 || ts[name].status == 401) {
-			t.Logf("TS now refuses %s, so the recorded difference may be stale: %d", name, ts[name].status)
-			t.Errorf("ts %s: %d %.300s", name, ts[name].status, ts[name].body)
-		}
 	}
-	// The fake answered on both, proving no real model ran: its reply says so. For TS only, a refusal
-	// for memory (tsMemoryRefusal) is a stated alternative: it comes after the permission check this
-	// test is about, so the answer still shows the request was let through; its measured inputs are
-	// logged. Go must reach the fake.
-	reachedFake := func(impl, what string, a answer) {
-		t.Helper()
-		if a.status == 200 && strings.Contains(a.body, "hello from") {
-			return
-		}
-		if impl == "ts" && a.status == 503 && strings.Contains(a.body, tsMemoryRefusal) {
-			t.Logf("ts %s: refused for memory after the permission check (tsMemoryRefusal); %s; TS logged: %.800s", what,
-				harness.FreeMemoryReading(), lastLogLine(filepath.Join(rootOf["ts"], "logs", "events.jsonl"), tsAdmissionRejected))
-			return
-		}
-		t.Errorf("%s %s: %d %.300s", impl, what, a.status, a.body)
-	}
-	reachedFake("go", "a role that may chat", goImpl["role-can-chat"])
-	if ts != nil {
-		reachedFake("ts", "a role that may chat", ts["role-can-chat"])
-		reachedFake("ts", "unlisted chat should reach the fake", ts["chat"])
+	// A role that may chat reaches the fake, proving no real model ran: its reply says so.
+	if a := goImpl["role-can-chat"]; a.status != 200 || !strings.Contains(a.body, "hello from") {
+		t.Errorf("a role that may chat: %d %.300s", a.status, a.body)
 	}
 }

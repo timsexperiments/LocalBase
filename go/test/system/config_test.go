@@ -13,24 +13,21 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestCLIConfigDeclarative compares `config validate|plan|apply|show` on twin
-// roots: documents, every validation message, plans, pending restarts,
-// apply on a fresh root, and the human output. No case can restart a
-// service: restart-required applies use --restart never, and the automatic
-// restart refusal runs against the foreground contract gateways.
+// TestCLIConfigDeclarative pins `config validate|plan|apply|show`: documents, every validation
+// message, plans, pending restarts, apply on a fresh root, and the human output. No case can
+// restart a service: restart-required applies use --restart never, and the automatic restart
+// refusal runs against the foreground contract gateways.
 func TestCLIConfigDeclarative(t *testing.T) {
 	pinned(t)
 	harness.PinValues(t)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
+	gr := cliRoot(t)
 	docs := fsguard.ScratchDir(t)
-	initOwnTwinRoots(t, roots)
-	compareCLI(t, roots, cliCase{args: []string{"--json", "config", "show"}})
+	initRoot(t, gr)
+	runCase(t, gr, "--json", "config", "show")
 	shown := runCLI(t, "go", gr, "--json", "config", "show")
 	var env struct {
 		Data struct{ Document string } `json:"data"`
@@ -113,9 +110,9 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	}
 	slices.Sort(names)
 	for _, n := range names {
-		compareCLI(t, roots, cliCase{args: []string{"--json", "config", "validate", "--file", invalid[n]}})
-		// The raw message, before the CLI's redaction, also matches.
-		compareRaw(t, invalid[n])
+		runCase(t, gr, "--json", "config", "validate", "--file", invalid[n])
+		// The raw message, before the CLI's redaction, is pinned too.
+		pinRaw(t, invalid[n])
 	}
 	for _, args := range [][]string{
 		{"--json", "config", "validate", "--file", basePath},
@@ -141,39 +138,23 @@ func TestCLIConfigDeclarative(t *testing.T) {
 		{"--json", "config", "show"},
 		{"--json", "config", "apply", "--file", change, "--restart", "never"},
 	} {
-		compareCLI(t, roots, cliCase{args: args})
+		runCase(t, gr, args...)
 	}
-	// Go reads TS's pending-restart record. TS can't read Go's root at all (tsCannotReadGoRoot): its
-	// refusal is checked exactly, so a TS that starts reading it shows up here.
-	if res := runCLI(t, "go", ts, "--json", "config", "show"); res.code != 0 || !strings.Contains(res.stdout, `"pendingRestart":true`) {
-		t.Errorf("go reading the TS root: %d %s", res.code, res.stdout)
-	}
-	if !tsLive() {
-		// The twin is Go itself (golden_test.go), which reads Go's root.
-	} else if res := runCLI(t, "ts", gr, "--json", "config", "show"); res.code != 1 || strings.TrimSpace(res.stdout) != tsCannotReadGoRoot {
-		t.Errorf("ts reading the Go root: want the named refusal (exit 1) %s, got %d %s", tsCannotReadGoRoot, res.code, res.stdout)
-	}
-	// Human output: plan lines and the rendered document. Go's read-copy notice is a named difference.
-	var notices readCopyNotices
+	// Human output: plan lines and the rendered document.
 	for _, args := range [][]string{
 		{"config", "plan", "--file", basePath},
 		{"config", "show"},
 		{"config", "apply", "--file", basePath, "--restart", "never"},
 	} {
-		a, b := runCLI(t, "ts", ts, args...), runCLI(t, "go", gr, args...)
-		if a.code != b.code || strings.ReplaceAll(a.stdout, ts, "<root>") != strings.ReplaceAll(b.stdout, gr, "<root>") ||
-			strings.ReplaceAll(notices.stripTwin(a.stderr), ts, "<root>") != strings.ReplaceAll(notices.strip(b.stderr), gr, "<root>") {
-			t.Errorf("%v:\n ts %d %q %q\n go %d %q %q", args, a.code, a.stdout, a.stderr, b.code, b.stdout, b.stderr)
-		}
+		runCase(t, gr, args...)
 	}
-	notices.expectSeen(t)
 	// Apply to a root that does not exist yet creates it.
-	fresh := [2]string{filepath.Join(filepath.Dir(ts), "fresh-ts"), filepath.Join(filepath.Dir(gr), "fresh-go")}
-	compareCLI(t, fresh, cliCase{args: []string{"--json", "config", "show"}})
-	compareCLI(t, fresh, cliCase{args: []string{"--json", "config", "plan", "--file", change}})
-	compareCLI(t, fresh, cliCase{args: []string{"--json", "config", "apply", "--file", invalid["experimental"], "--restart", "never"}})
-	compareCLI(t, fresh, cliCase{args: []string{"--json", "config", "apply", "--file", change, "--restart", "never"}})
-	compareCLI(t, fresh, cliCase{args: []string{"--json", "config", "show"}})
+	fresh := filepath.Join(filepath.Dir(gr), "fresh-go")
+	runCase(t, fresh, "--json", "config", "show")
+	runCase(t, fresh, "--json", "config", "plan", "--file", change)
+	runCase(t, fresh, "--json", "config", "apply", "--file", invalid["experimental"], "--restart", "never")
+	runCase(t, fresh, "--json", "config", "apply", "--file", change, "--restart", "never")
+	runCase(t, fresh, "--json", "config", "show")
 	list := func(dir string) []string {
 		var out []string
 		filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
@@ -184,23 +165,10 @@ func TestCLIConfigDeclarative(t *testing.T) {
 		})
 		return out
 	}
-	// Each fresh root against its own implementation's set: TS's, and TS's plus goOnlyRootFiles for Go.
-	tsFiles, goFiles := list(fresh[0]), list(fresh[1])
-	slices.Sort(tsFiles)
-	slices.Sort(goFiles)
-	wantGo := append(slices.Clone(tsFiles), goOnlyRootFiles...)
-	if !tsLive() {
-		wantGo = slices.Clone(tsFiles) // the twin is Go itself (golden_test.go)
-	}
-	slices.Sort(wantGo)
-	for _, f := range goOnlyRootFiles {
-		if tsLive() && slices.Contains(tsFiles, f) {
-			t.Errorf("fresh TS root has %s, a named Go-only file", f)
-		}
-	}
-	if !slices.Equal(goFiles, wantGo) {
-		t.Errorf("fresh root files:\n ts %v\n go %v\n want go %v (ts's plus the Go-only %v)", tsFiles, goFiles, wantGo, goOnlyRootFiles)
-	}
+	// The files a fresh root has, which were TS's plus the WAL's owner record until step 7.
+	files := list(fresh)
+	slices.Sort(files)
+	harness.PinJSON(t, "fresh root files", files)
 	// Stdin is the same document as the file.
 	cmd := exec.Command(goCLI(t), "--root", gr, "--json", "config", "plan", "--file", "-")
 	cmd.Env = cleanEnv()
@@ -212,10 +180,9 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	}
 }
 
-// compareRaw compares the validation message before redaction (the CLI
-// replaces messages containing "input:" and similar wholesale) with TS's, when TS runs, and pins
-// Go's (harness.PinJSON).
-func compareRaw(t *testing.T, path string) {
+// pinRaw pins the validation message before redaction (the CLI replaces messages containing
+// "input:" and similar wholesale), which R3a recorded where it matched TS's.
+func pinRaw(t *testing.T, path string) {
 	t.Helper()
 	cat, err := catalog.LoadWithFormer()
 	if err != nil {
@@ -227,30 +194,12 @@ func compareRaw(t *testing.T, path string) {
 		got = err.Error()
 	}
 	harness.PinJSON(t, "validation message: "+filepath.Base(path), got)
-	if !tsLive() {
-		return
-	}
-	script := `import { readFileSync } from "node:fs";
-import { parseConfiguration } from "./src/domains/config/declarative";
-try { parseConfiguration(readFileSync(process.argv.at(-1)!, "utf8")); console.log("OK"); }
-catch (e) { console.log((e as Error).message); }`
-	cmd := exec.Command("bun", "-e", script, path)
-	cmd.Dir = testutil.RepoRoot(t)
-	cmd.Env = cleanEnv()
-	want, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("bun: %v", err)
-	}
-	if got != strings.TrimSpace(string(want)) {
-		t.Errorf("%s:\n go %s\n ts %s", filepath.Base(path), got, want)
-	}
 }
 
 // TestCLIConfigForegroundGateway: with a foreground gateway on the root,
 // a restart-required apply is refused before saving, and an unchanged
 // document with --wait waits for its readiness.
 func TestCLIConfigForegroundGateway(t *testing.T) {
-	eachCLI(t)
 	for _, tg := range harness.Targets(t) {
 		t.Run(tg.Name, func(t *testing.T) {
 			shown := runCLI(t, tg.Name, tg.Root, "--json", "config", "show")

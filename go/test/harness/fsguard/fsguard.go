@@ -446,10 +446,12 @@ func WriteGolden(name string, b []byte) error {
 		return err
 	}
 	// The name is checked before anything is made, so a refused one leaves no directory behind.
-	if path := filepath.Join(dir, name); !within(path, dir) || path == dir {
+	// It may name a directory of testdata/golden: each platform's goldens have their own.
+	path := filepath.Join(dir, name)
+	if !within(path, dir) || path == dir {
 		return fmt.Errorf("%w: golden %q leaves %s", ErrGuard, name, dir)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	root, err := registerScratch(dir)

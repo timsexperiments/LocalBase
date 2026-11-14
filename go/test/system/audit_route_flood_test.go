@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -21,9 +20,6 @@ import (
 // counted, and the record of who changed keys stays in the file, before, during and after. Then
 // every log is searched for what the requests carried.
 func TestLimitedChangesCannotPushOutWhoChangedKeys(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {

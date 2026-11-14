@@ -13,14 +13,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// CLI contract: the same command through both binaries, on twin scratch
-// roots, must give the same exit code and the same JSON envelope apart from
-// volatile values (ids, secrets, timestamps, the root path).
+// The CLI tests run Go's command line on scratch roots. The pinned ones (golden_test.go) compare
+// every run with a transcript golden; until step 7 they compared it with TS's.
 
 var (
 	goCLIOnce sync.Once
@@ -113,12 +111,10 @@ func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cl
 	p := pinOf(t)
 	var cmd *exec.Cmd
 	switch {
-	case impl == "ts" && (p == nil || tsLive()):
-		cmd = exec.Command("bun", append([]string{"run", "src/cli.ts"}, full...)...)
-		cmd.Dir = testutil.RepoRoot(t)
+	case impl != "go":
+		t.Fatalf("runCLI(%q): the CLI is Go's (TypeScript was retired in step 7)", impl)
 	case p != nil:
-		// A pinned test's Go runs, and its TS twin's under -impl=go, are the lab build on the
-		// fixed host (golden_test.go).
+		// A pinned test's runs are the lab build on the fixed host (golden_test.go).
 		cmd = exec.Command(goLabCLI(t), full...)
 		env = append([]string{"LOCALBASE_LAB_HOST_FILE=" + p.host}, env...)
 	default:
@@ -144,7 +140,7 @@ func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cl
 	}
 	res := cliResult{code, out.String(), errb.String()}
 	if p != nil {
-		p.ran(t, impl, root, args, res)
+		p.record(t, root, args, res)
 	}
 	return res
 }
@@ -173,207 +169,135 @@ func normalize(t *testing.T, s, root string) any {
 	return v
 }
 
-type cliCase struct {
-	// goArgs replaces args on Go, for a flag TS does not have. An issuer in the answer is then Go's own.
-	goArgs []string
-	args   []string
-	skip   func(path string) bool
-	// goOnly names paths only Go's answer has, each a named difference in
-	// dual_differences_test.go: Go must have it and TS must not, and it is left out of the diff.
-	goOnly []string
-}
-
-func twinRoots(t *testing.T) (string, string) {
+// cliRoot is a pinned test's root: <scratch>/go, the Go half of the twin roots R3a recorded on.
+func cliRoot(t *testing.T) string {
 	base := fsguard.ScratchDir(t)
 	base, _ = filepath.EvalSymlinks(base)
-	ts := filepath.Join(base, "ts")
-	if p := pinOf(t); p != nil {
-		p.mu.Lock()
-		p.twin[ts] = true
-		p.mu.Unlock()
-	}
-	return ts, filepath.Join(base, "go")
+	return filepath.Join(base, "go")
 }
 
-// initOwnTwinRoots runs each implementation's own `init` on its twin root (ts, go), so neither
-// reads a root the other made. A Go-made root can't be read by TS: Go's store is WAL (#647), and TS
-// opens the database read-only (src/db/client.ts openReadOnlyDatabase), which SQLite refuses for a
-// WAL file with no -shm.
-func initOwnTwinRoots(t *testing.T, roots [2]string) {
+// initRoot runs `init` on a pinned test's root.
+func initRoot(t *testing.T, root string) {
 	t.Helper()
-	for i, impl := range []string{"ts", "go"} {
-		if res := runCLI(t, impl, roots[i], "--json", "init"); res.code != 0 {
-			t.Fatalf("%s init: %s%s", impl, res.stdout, res.stderr)
-		}
+	if res := runCLI(t, "go", root, "--json", "init"); res.code != 0 {
+		t.Fatalf("init: %s%s", res.stdout, res.stderr)
 	}
 }
 
-func compareCLI(t *testing.T, roots [2]string, c cliCase) {
+// runCase runs one command of a pinned test, which its transcript pins.
+func runCase(t *testing.T, root string, args ...string) cliResult {
 	t.Helper()
-	ts := runCLI(t, "ts", roots[0], c.args...)
-	goArgs := c.args
-	if c.goArgs != nil {
-		goArgs = c.goArgs
-	}
-	gr := runCLI(t, "go", roots[1], goArgs...)
-	if !tsLive() {
-		return // the twin is Go itself (golden_test.go): Go's run is pinned by the transcript
-	}
-	label := strings.Join(c.args, " ")
-	if ts.code != gr.code {
-		t.Errorf("%s: exit ts=%d go=%d\nts: %s%s\ngo: %s%s", label, ts.code, gr.code, ts.stdout, ts.stderr, gr.stdout, gr.stderr)
-		return
-	}
-	a, b := normalize(t, ts.stdout, roots[0]), normalize(t, gr.stdout, roots[1])
-	for _, p := range c.goOnly {
-		_, inTS := jsonAt(a, p)
-		_, inGo := jsonAt(b, p)
-		if inTS || !inGo {
-			t.Errorf("%s: %s is a named Go-only difference, but ts has it: %v, go has it: %v", label, p, inTS, inGo)
-		}
-	}
-	skip := func(p string) bool {
-		return strings.HasSuffix(p, ".prefix") || (c.goArgs != nil && strings.HasSuffix(p, ".issuer")) || (c.skip != nil && c.skip(p)) ||
-			slices.Contains(c.goOnly, p)
-	}
-	if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
-		if len(d) > 20 {
-			d = append(d[:20], "...")
-		}
-		t.Errorf("%s differs:\n  %s", label, strings.Join(d, "\n  "))
-	}
+	return runCLI(t, "go", root, args...)
 }
 
 func TestCLIInitAndKeys(t *testing.T) {
 	pinned(t)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
-	errorMessage := func(p string) bool { return p == ".error.message" }
-	for _, c := range []cliCase{
-		{args: []string{"--json", "init"}},
-		{args: []string{"--json", "keys", "list"}},
-		{args: []string{"--json", "keys", "create", "--name", "ci", "--scopes", "models:read,inference:chat"}},
-		{args: []string{"--json", "keys", "create"}},
-		{args: []string{"--json", "keys", "create", "--scopes", ""}},
-		{args: []string{"--json", "keys", "create", "--scopes", "bogus"}, skip: errorMessage},
-		{args: []string{"--json", "keys", "create", "--expires-days", "0"}, skip: errorMessage},
-		{args: []string{"--json", "keys", "create", "--name"}, skip: errorMessage},
-		{args: []string{"--json", "keys", "revoke", "key_missing"}},
-		{args: []string{"--json", "keys", "rotate"}, skip: errorMessage},
-		{args: []string{"--json", "keys", "bogus"}, skip: errorMessage},
-		{args: []string{"--json", "keys", "list"}},
+	gr := cliRoot(t)
+	for _, args := range [][]string{
+		{"--json", "init"},
+		{"--json", "keys", "list"},
+		{"--json", "keys", "create", "--name", "ci", "--scopes", "models:read,inference:chat"},
+		{"--json", "keys", "create"},
+		{"--json", "keys", "create", "--scopes", ""},
+		{"--json", "keys", "create", "--scopes", "bogus"},
+		{"--json", "keys", "create", "--expires-days", "0"},
+		{"--json", "keys", "create", "--name"},
+		{"--json", "keys", "revoke", "key_missing"},
+		{"--json", "keys", "rotate"},
+		{"--json", "keys", "bogus"},
+		{"--json", "keys", "list"},
 	} {
-		compareCLI(t, roots, c)
+		runCase(t, gr, args...)
 	}
-	// Mutations on the first key of each root.
-	ids := [2]string{}
-	for i, impl := range []string{"ts", "go"} {
-		r := runCLI(t, impl, roots[i], "--json", "keys", "list")
-		var env struct {
-			Data struct{ Keys []struct{ ID string } }
-		}
-		json.Unmarshal([]byte(r.stdout), &env)
-		if len(env.Data.Keys) == 0 {
-			t.Fatalf("%s: no keys", impl)
-		}
-		ids[i] = env.Data.Keys[0].ID
+	// Mutations on the first key.
+	r := runCLI(t, "go", gr, "--json", "keys", "list")
+	var env struct {
+		Data struct{ Keys []struct{ ID string } }
+	}
+	json.Unmarshal([]byte(r.stdout), &env)
+	if len(env.Data.Keys) == 0 {
+		t.Fatalf("no keys: %s", r.stdout)
 	}
 	for _, args := range [][]string{{"keys", "scopes", "", "--scopes", "inference:speech,models:read"}, {"keys", "rotate", ""}, {"keys", "revoke", ""}} {
-		var outs [2]any
-		for i, impl := range []string{"ts", "go"} {
-			a := append([]string{"--json"}, args...)
-			a[3] = ids[i]
-			r := runCLI(t, impl, roots[i], a...)
-			if r.code != 0 {
-				t.Fatalf("%s %v: %d %s %s", impl, a, r.code, r.stdout, r.stderr)
-			}
-			outs[i] = normalize(t, r.stdout, roots[i])
-		}
-		if d := harness.DiffJSON("", outs[0], outs[1], func(p string) bool { return strings.HasSuffix(p, ".prefix") }); len(d) > 0 {
-			t.Errorf("%v differs: %v", args, d)
+		a := append([]string{"--json"}, args...)
+		a[3] = env.Data.Keys[0].ID
+		if r := runCLI(t, "go", gr, a...); r.code != 0 {
+			t.Fatalf("%v: %d %s %s", a, r.code, r.stdout, r.stderr)
 		}
 	}
 }
 
 func TestCLIModels(t *testing.T) {
 	pinned(t)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
-	for i, impl := range []string{"ts", "go"} {
-		if r := runCLI(t, impl, roots[i], "--json", "init"); r.code != 0 {
-			t.Fatalf("%s init: %s %s", impl, r.stdout, r.stderr)
-		}
-	}
-	for _, c := range []cliCase{
-		{args: []string{"--json", "models", "catalog"}},
-		{args: []string{"--json", "models", "catalog", "--kind", "image", "--sort", "memory"}},
-		{args: []string{"--json", "models", "catalog", "--capability", "tool-calling", "--fits"}},
-		{args: []string{"--json", "models", "catalog", "--search", "qwen coder", "--sort", "context", "--reverse"}},
-		{args: []string{"--json", "models", "catalog", "--license", "open", "--license", "conditional", "--sort", "name"}},
-		{args: []string{"--json", "models", "catalog", "--no-installed", "--kind", "stt"}},
-		{args: []string{"--json", "models", "catalog", "--kind", "bogus"}, skip: func(p string) bool { return p == ".error.message" }},
-		{args: []string{"--json", "models", "recommend"}},
-		{args: []string{"--json", "models", "recommend", "--kind", "stt", "--vram", "8"}},
-		{args: []string{"--json", "models", "recommend", "--kind", "image", "--vram", "24"}},
-		{args: []string{"--json", "models", "list"}},
-		{args: []string{"--json", "models", "list", "--kind", "llm"}},
-		{args: []string{"--json", "models", "show", "qwen2.5-coder-1.5b-instruct-q4_k_m"}},
-		{args: []string{"--json", "models", "show", "qwen3-tts-1.7b-base-q4_k_m"}},
-		{args: []string{"--json", "models", "show", "wan2.1-t2v-1.3b-q8_0"}},
-		{args: []string{"--json", "models", "show", "qwen3-embedding-0.6b-q8_0"}},
-		{args: []string{"--json", "models", "show", "nope"}},
-		{args: []string{"--json", "models", "install", "nope"}},
-		{args: []string{"--json", "doctor"}},
-		{args: []string{"--json", "reset"}, skip: func(p string) bool { return p == ".error.message" }},
-		{args: []string{"--json", "reset", "--yes"}},
-		{args: []string{"--json", "keys", "list"}},
-		{args: []string{"--json", "uninstall"}, skip: func(p string) bool { return p == ".error.message" }},
-		{args: []string{"--json", "uninstall", "-y"}, goOnly: []string{goOnlyUninstallReadCopies}},
-		{args: []string{"--json", "reset", "--yes"}, skip: func(p string) bool { return p == ".error.message" }},
+	gr := cliRoot(t)
+	initRoot(t, gr)
+	for _, args := range [][]string{
+		{"--json", "models", "catalog"},
+		{"--json", "models", "catalog", "--kind", "image", "--sort", "memory"},
+		{"--json", "models", "catalog", "--capability", "tool-calling", "--fits"},
+		{"--json", "models", "catalog", "--search", "qwen coder", "--sort", "context", "--reverse"},
+		{"--json", "models", "catalog", "--license", "open", "--license", "conditional", "--sort", "name"},
+		{"--json", "models", "catalog", "--no-installed", "--kind", "stt"},
+		{"--json", "models", "catalog", "--kind", "bogus"},
+		{"--json", "models", "recommend"},
+		{"--json", "models", "recommend", "--kind", "stt", "--vram", "8"},
+		{"--json", "models", "recommend", "--kind", "image", "--vram", "24"},
+		{"--json", "models", "list"},
+		{"--json", "models", "list", "--kind", "llm"},
+		{"--json", "models", "show", "qwen2.5-coder-1.5b-instruct-q4_k_m"},
+		{"--json", "models", "show", "qwen3-tts-1.7b-base-q4_k_m"},
+		{"--json", "models", "show", "wan2.1-t2v-1.3b-q8_0"},
+		{"--json", "models", "show", "qwen3-embedding-0.6b-q8_0"},
+		{"--json", "models", "show", "nope"},
+		{"--json", "models", "install", "nope"},
+		{"--json", "doctor"},
+		{"--json", "reset"},
+		{"--json", "reset", "--yes"},
+		{"--json", "keys", "list"},
+		{"--json", "uninstall"},
+		{"--json", "uninstall", "-y"},
+		{"--json", "reset", "--yes"},
 	} {
-		compareCLI(t, roots, c)
+		runCase(t, gr, args...)
 	}
 }
 
 func TestCLIConfigure(t *testing.T) {
 	pinned(t)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
-	msg := func(p string) bool { return p == ".error.message" }
-	tomlPath := filepath.Join(filepath.Dir(ts), "overrides.toml")
+	gr := cliRoot(t)
+	tomlPath := filepath.Join(filepath.Dir(gr), "overrides.toml")
 	fsguard.WriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
-	badToml := filepath.Join(filepath.Dir(ts), "bad.toml")
+	badToml := filepath.Join(filepath.Dir(gr), "bad.toml")
 	fsguard.WriteFile(badToml, []byte("bogus = 1\n"), 0o600)
-	for _, c := range []cliCase{
-		{args: []string{"--json", "configure"}, skip: msg},
-		{args: []string{"--json", "configure", "--defaults", "--no-create-key"}},
-		{args: []string{"--json", "configure", "--parallel", "3", "--ctx-mode", "explicit"}},
+	for _, args := range [][]string{
+		{"--json", "configure"},
+		{"--json", "configure", "--defaults", "--no-create-key"},
+		{"--json", "configure", "--parallel", "3", "--ctx-mode", "explicit"},
 		// A kept former entry is not a built-in id: both refuse it before
 		// the root's catalog loads (TS assertCatalogModels, #368).
-		{args: []string{"--json", "configure", "--llm-models", "qwen2.5-coder-1.5b-instruct-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"}},
-		{args: []string{"--json", "configure", "--llm-models", "qwen3.5-4b-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"}},
-		{args: []string{"--json", "configure", "--stt-models", "", "--tts-models", "qwen3-tts-1.7b-base-q4_k_m"}},
-		{args: []string{"--json", "configure", "--config", tomlPath}},
-		{args: []string{"--json", "config", "show"}}, // the memory change marked a pending restart
-		{args: []string{"--json", "configure", "--config", badToml}, skip: msg},
-		{args: []string{"--json", "configure", "--llm-models", "nope"}, skip: msg},
-		{args: []string{"--json", "configure", "--parallel", "9"}, skip: msg},
-		{args: []string{"--json", "configure", "--active-llm", "qwen3-tts-1.7b-base-q4_k_m"}, skip: msg},
-		{args: []string{"--json", "configure", "--tts-models", "kokoro-82m-v1.0-q8"}, skip: msg},
-		{args: []string{"--json", "configure", "--otel-endpoint", "ftp://x"}, skip: msg},
-		{args: []string{"--json", "configure", "--otel-endpoint", "http://collector:4318", "--otel-headers", "x-token=abc", "--otel-sample-ratio", "50"}},
-		{args: []string{"--json", "configure", "--hf-token", "hf_test"}},
-		{args: []string{"--json", "configure", "--create-key"}, skip: func(p string) bool { return strings.HasPrefix(p, ".data.createdKey") }},
+		{"--json", "configure", "--llm-models", "qwen2.5-coder-1.5b-instruct-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"},
+		{"--json", "configure", "--llm-models", "qwen3.5-4b-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"},
+		{"--json", "configure", "--stt-models", "", "--tts-models", "qwen3-tts-1.7b-base-q4_k_m"},
+		{"--json", "configure", "--config", tomlPath},
+		{"--json", "config", "show"}, // the memory change marked a pending restart
+		{"--json", "configure", "--config", badToml},
+		{"--json", "configure", "--llm-models", "nope"},
+		{"--json", "configure", "--parallel", "9"},
+		{"--json", "configure", "--active-llm", "qwen3-tts-1.7b-base-q4_k_m"},
+		{"--json", "configure", "--tts-models", "kokoro-82m-v1.0-q8"},
+		{"--json", "configure", "--otel-endpoint", "ftp://x"},
+		{"--json", "configure", "--otel-endpoint", "http://collector:4318", "--otel-headers", "x-token=abc", "--otel-sample-ratio", "50"},
+		{"--json", "configure", "--hf-token", "hf_test"},
+		{"--json", "configure", "--create-key"},
 	} {
-		compareCLI(t, roots, c)
+		runCase(t, gr, args...)
 	}
 }
 
-// TestCLILogs reads each launched gateway's log with both CLIs: the same
-// file must give the same events. Go's answers are checked on their own too: the log holds what
-// the package's other tests did to the shared gateway, so it can't be pinned as a transcript.
+// TestCLILogs reads the shared gateway's log with Go's logs command and checks its filters and
+// refusals itself: the log holds what the package's other tests did to the gateway, so it can't
+// be pinned as a transcript.
 func TestCLILogs(t *testing.T) {
-	eachCLI(t)
 	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" {
 			continue
@@ -381,39 +305,6 @@ func TestCLILogs(t *testing.T) {
 		harness.Do(t, "GET", tg.BaseURL+"/v1/models", harness.Bearer(tg.Key), "")
 		harness.Do(t, "GET", tg.BaseURL+"/nope", harness.Bearer(tg.Key), "")
 		checkGoLogs(t, tg)
-		for _, args := range [][]string{{"--json", "logs"}, {"--json", "logs", "--limit", "2"}, {"--json", "logs", "--level", "warn"},
-			{"--json", "logs", "--runtime", "gateway", "--since", "2020-01-01T00:00:00Z"}, {"--json", "logs", "--limit", "0"},
-			{"--json", "logs", "--level", "loud"}} {
-			gr := runCLI(t, "go", tg.Root, args...)
-			if !tsLive() {
-				continue
-			}
-			ts := runCLI(t, "ts", tg.Root, args...)
-			if ts.code != gr.code {
-				t.Errorf("%s %v: exit ts=%d go=%d", tg.Name, args, ts.code, gr.code)
-				continue
-			}
-			skip := func(p string) bool { return p == ".error.message" }
-			if d := harness.DiffJSON("", normalize(t, ts.stdout, tg.Root), normalize(t, gr.stdout, tg.Root), skip); len(d) > 0 {
-				if len(d) > 10 {
-					d = d[:10]
-				}
-				t.Errorf("%s %v differs:\n  %s", tg.Name, args, strings.Join(d, "\n  "))
-			}
-		}
-	}
-}
-
-// eachCLI starts a test that runs each target's own CLI against its own gateway and checks what it
-// says: under -impl=go Go's, under -impl=both TS's too. It compares neither with the other.
-func eachCLI(t *testing.T) {
-	t.Helper()
-	switch harness.Impl() {
-	case "both":
-		harness.RequireTS(t)
-	case "go":
-	default:
-		t.Skip("runs the Go CLI")
 	}
 }
 
@@ -484,9 +375,8 @@ func checkGoLogs(t *testing.T, tg *harness.Target) {
 	}
 }
 
-// TestCLISmoke runs each CLI's smoke check against its own gateway.
+// TestCLISmoke runs the smoke check against the shared gateway, with a real model.
 func TestCLISmoke(t *testing.T) {
-	eachCLI(t)
 	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" || !tg.RealModel {
 			continue

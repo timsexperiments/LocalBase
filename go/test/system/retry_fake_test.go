@@ -20,15 +20,11 @@ import (
 // it runs in CI: a fake whisper-server that refuses to start while a file exists, and then starts. It
 // is transcription, not images, because a CI runner has too little free memory to admit an image
 // model's estimate even with no reserve, and transcription goes through the same failed-start path. A failed
-// start is transient on both gateways: 503 with Retry-After on each repeat, with the same envelope.
-// Once the fault is gone, Go's next request works, because it retries the start. The reserve is off,
-// so that this reaches the start on a small CI runner too, and a refusal for memory fails the test.
+// start is transient: 503 with Retry-After on each repeat (TS gave the same envelope until step 7).
+// Once the fault is gone, the next request works, because the gateway retries the start. The reserve is
+// off, so that this reaches the start on a small CI runner too, and a refusal for memory fails the test.
 func TestDifferentialRetrySemanticsFake(t *testing.T) {
-	impls := []string{harness.Impl()}
-	if harness.Impl() == "both" {
-		harness.RequireTS(t)
-		impls = []string{"ts", "go"}
-	}
+	impls := []string{"go"}
 	if flag.Lookup("url").Value.String() != "" {
 		t.Skip("launches its own gateways")
 	}
@@ -63,8 +59,8 @@ func TestDifferentialRetrySemanticsFake(t *testing.T) {
 		if err := fsguard.WriteFile(script, []byte(fmt.Sprintf("#!/bin/sh\n[ -e %q ] && exit 3\nexec %q \"$@\"\n", broken, fake)), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		// Go is told where it is; TS finds a user-managed one on PATH.
-		tg, err := harness.Launch(impl, harness.Env([]string{"LOCALBASE_WHISPER_SERVER=" + script, "PATH=" + bin + ":" + os.Getenv("PATH")}), harness.NoReserve())
+		// The gateway is told where it is, and finds it on PATH too.
+		tg, err := harness.Launch(harness.Env([]string{"LOCALBASE_WHISPER_SERVER=" + script, "PATH=" + bin + ":" + os.Getenv("PATH")}), harness.NoReserve())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,12 +98,5 @@ func TestDifferentialRetrySemanticsFake(t *testing.T) {
 	}
 	if a, ok := answers["go"]; ok && a.afterTheFix != http.StatusOK {
 		t.Errorf("go after the fault was fixed: %d, want a retried start", a.afterTheFix)
-	}
-	if ts, ok := answers["ts"]; ok {
-		t.Logf("ts after the fault was fixed: %d", ts.afterTheFix)
-		g := answers["go"]
-		if ts.status != g.status || ts.code != g.code || ts.retry != g.retry || ts.message != g.message {
-			t.Errorf("failed starts differ:\n ts %+v\n go %+v", ts, g)
-		}
 	}
 }

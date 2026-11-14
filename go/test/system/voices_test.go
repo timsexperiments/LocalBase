@@ -4,62 +4,48 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestCLIVoices compares `voices list|add|remove` on twin roots.
+// TestCLIVoices pins `voices list|add|remove`.
 func TestCLIVoices(t *testing.T) {
 	pinned(t)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
-	for i, impl := range []string{"ts", "go"} {
-		if r := runCLI(t, impl, roots[i], "--json", "init"); r.code != 0 {
-			t.Fatalf("%s init: %s %s", impl, r.stdout, r.stderr)
-		}
-	}
+	gr := cliRoot(t)
+	initRoot(t, gr)
 	dir := fsguard.ScratchDir(t)
 	clip := filepath.Join(dir, "clip.wav")
 	fsguard.WriteFile(clip, harness.VoiceClip(11), 0o600)
 	short := filepath.Join(dir, "short.wav")
 	fsguard.WriteFile(short, harness.VoiceClip(11)[:44+16000*2], 0o600)
-	volatile := func(p string) bool { return strings.HasSuffix(p, ".id") }
-	for _, c := range []cliCase{
-		{args: []string{"--json", "voices", "list"}},
-		{args: []string{"--json", "voices", "add", clip, "--name", "Narrator"}},
-		{args: []string{"--json", "voices", "add", filepath.Join(dir, "missing.wav"), "--name", "Narrator", "--consent"}},
-		{args: []string{"--json", "voices", "add", dir, "--name", "Narrator", "--consent"}},
-		{args: []string{"--json", "voices", "add", short, "--name", "Narrator", "--consent"}},
-		{args: []string{"--json", "voices", "add", clip, "--name", "Harbor", "--consent"}},
-		{args: []string{"--json", "voices", "add", clip, "--name", " Narrator ", "--consent"}, skip: volatile},
-		{args: []string{"--json", "voices", "add", clip, "--name", "narrator", "--consent"}},
-		{args: []string{"--json", "voices", "list"}, skip: volatile},
-		{args: []string{"--json", "voices", "remove", "voice-000000000000"}},
-		{args: []string{"--json", "voices", "remove", "../etc"}},
+	for _, args := range [][]string{
+		{"--json", "voices", "list"},
+		{"--json", "voices", "add", clip, "--name", "Narrator"},
+		{"--json", "voices", "add", filepath.Join(dir, "missing.wav"), "--name", "Narrator", "--consent"},
+		{"--json", "voices", "add", dir, "--name", "Narrator", "--consent"},
+		{"--json", "voices", "add", short, "--name", "Narrator", "--consent"},
+		{"--json", "voices", "add", clip, "--name", "Harbor", "--consent"},
+		{"--json", "voices", "add", clip, "--name", " Narrator ", "--consent"},
+		{"--json", "voices", "add", clip, "--name", "narrator", "--consent"},
+		{"--json", "voices", "list"},
+		{"--json", "voices", "remove", "voice-000000000000"},
+		{"--json", "voices", "remove", "../etc"},
 	} {
-		compareCLI(t, roots, c)
+		runCase(t, gr, args...)
 	}
-	// Human output and removal of each root's own voice.
-	var lines [2]string
-	for i, impl := range []string{"ts", "go"} {
-		r := runCLI(t, impl, roots[i], "--json", "voices", "list")
-		id := normalizeID(t, r.stdout)
-		h := runCLI(t, impl, roots[i], "voices", "list")
-		lines[i] = strings.ReplaceAll(volatileValue.ReplaceAllString(h.stdout, "<time>"), id, "<id>")
-		if rm := runCLI(t, impl, roots[i], "--json", "voices", "remove", id); rm.code != 0 {
-			t.Errorf("%s remove: %s %s", impl, rm.stdout, rm.stderr)
-		}
-		if _, err := os.Stat(filepath.Join(roots[i], "voices", id+".wav")); !os.IsNotExist(err) {
-			t.Errorf("%s kept the recording: %v", impl, err)
-		}
+	// Human output and removal of the voice.
+	r := runCLI(t, "go", gr, "--json", "voices", "list")
+	id := normalizeID(t, r.stdout)
+	runCase(t, gr, "voices", "list")
+	if rm := runCLI(t, "go", gr, "--json", "voices", "remove", id); rm.code != 0 {
+		t.Errorf("remove: %s %s", rm.stdout, rm.stderr)
 	}
-	if lines[0] != lines[1] {
-		t.Errorf("voices list output:\n ts: %q\n go: %q", lines[0], lines[1])
+	if _, err := os.Stat(filepath.Join(gr, "voices", id+".wav")); !os.IsNotExist(err) {
+		t.Errorf("kept the recording: %v", err)
 	}
-	compareCLI(t, roots, cliCase{args: []string{"--json", "voices", "list"}})
+	runCase(t, gr, "--json", "voices", "list")
 }
 
 func normalizeID(t *testing.T, stdout string) string {

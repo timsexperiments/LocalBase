@@ -10,7 +10,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -19,9 +18,6 @@ import (
 // offers only what is on disk, and a tool with nothing to run shows no prompt that could only
 // fail (DESIGN §27). Go only: TS has no Studio. No model runs here, so the files are sparse.
 func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tools := []struct {
 		page, column, onDisk, notOnDisk, none, filter string
 	}{
@@ -173,9 +169,6 @@ func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
 // Through the real binary: only a model that really can edit is marked as able to, and with none on
 // disk the page says what is needed (DESIGN §27.5). No model runs here, so the files are sparse.
 func TestImageEditOnlyWithAModelThatCan(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	const plain, capable = "dreamshaper-8-lcm", "juggernaut-xl-v9"
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}

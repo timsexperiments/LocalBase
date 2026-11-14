@@ -14,7 +14,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -54,9 +53,6 @@ func hubFixtureServer(t *testing.T, strict bool) string {
 // against the recorded Hub and compares output lines, data, written catalog
 // files and errors with what the TS command handlers produced.
 func TestCLIHubGolden(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go CLI")
-	}
 	b, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "golden.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -165,9 +161,6 @@ func selectSTT(t *testing.T, rootDir, id string) {
 // recorded Hub: search, a preview equal to TS's, and an add the catalog
 // picks up without a restart.
 func TestModelDiscoveryEndToEnd(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	b, _ := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "golden.json"))
 	var g struct {
 		Discovery struct {

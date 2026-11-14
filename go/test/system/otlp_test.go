@@ -119,7 +119,7 @@ func runOTLP(t *testing.T, impl string, status int, opts ...harness.Option) *otl
 // endpoint; the caller fills in what was received.
 func runOTLPAt(t *testing.T, impl, endpoint string, opts ...harness.Option) *otlpRun {
 	t.Helper()
-	tg, err := harness.Launch(impl, append([]harness.Option{harness.Env([]string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
+	tg, err := harness.Launch(append([]harness.Option{harness.Env([]string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
 		"OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret})}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
@@ -258,172 +258,89 @@ func otlpPlain(v any) any {
 	return v
 }
 
-// TestDifferentialOTLP: both gateways export the same span trees and the
-// same request and inference log records, correlated to the same spans,
-// for the same requests; exporter headers are sent and never logged.
+// TestDifferentialOTLP: the gateway exports span trees and request log records, correlated to
+// their spans, for each request; exporter headers are sent and never logged. The trees and records
+// are pinned (they were compared with TS's until step 7).
 func TestDifferentialOTLP(t *testing.T) {
-	fixture := pinnedFixture(t)
-	runs := map[string]*otlpRun{"go": runOTLP(t, "go", 0, fixture...)}
-	if tsLive() {
-		runs["ts"] = runOTLP(t, "ts", 0, fixture...)
-	}
-	records := map[string]map[string]map[string]any{}
-	for impl, run := range runs {
-		records[impl] = run.checkRecords(t, impl)
-		run.col.mu.Lock()
-		for _, h := range run.col.headers {
-			if h.Get("X-Auth") != otlpSecret || h.Get("Content-Type") != "application/x-protobuf" {
-				t.Errorf("%s: export headers %v", impl, h)
-			}
-		}
-		run.col.mu.Unlock()
-		if b, _ := os.ReadFile(filepath.Join(run.root, "logs", "events.jsonl")); strings.Contains(string(b), otlpSecret) {
-			t.Errorf("%s: the exporter header reached the local log", impl)
+	run := runOTLP(t, "go", 0, pinnedFixture(t)...)
+	records := run.checkRecords(t, "go")
+	run.col.mu.Lock()
+	for _, h := range run.col.headers {
+		if h.Get("X-Auth") != otlpSecret || h.Get("Content-Type") != "application/x-protobuf" {
+			t.Errorf("export headers %v", h)
 		}
 	}
-	labels := []string{"models", "unmatched", "missing", "invalid"}
-	if runs["go"].real && (runs["ts"] == nil || runs["ts"].real) {
-		labels = append(labels, "chat")
+	run.col.mu.Unlock()
+	if b, _ := os.ReadFile(filepath.Join(run.root, "logs", "events.jsonl")); strings.Contains(string(b), otlpSecret) {
+		t.Errorf("the exporter header reached the local log")
 	}
-	t.Logf("comparing %v", labels)
-	// Go: a 4xx server span and request record carry the error's type and
-	// code, never its message.
+	// A 4xx server span and request record carry the error's type and code, never its message.
 	for label, code := range map[string]string{"unmatched": "route_disabled", "missing": "invalid_api_key", "invalid": "invalid_api_key"} {
-		span := runs["go"].tree(runs["go"].requests[label])
+		span := run.tree(run.requests[label])
 		attrs, _ := span["attributes"].(map[string]any)
 		if fmt.Sprint(otlpPlain(attrs["localbase.error.code"])) != code || fmt.Sprint(otlpPlain(attrs["localbase.error.type"])) != "invalid_request_error" {
-			t.Errorf("go %s span error attributes: %v", label, attrs)
+			t.Errorf("%s span error attributes: %v", label, attrs)
 		}
-		if rec := records["go"]["http.request|"+runs["go"].requests[label]]; rec == nil || fmt.Sprint(otlpPlain(rec["attributes"].(map[string]any)["error_code"])) != code {
-			t.Errorf("go %s request record lacks error_code %s: %v", label, code, rec)
+		if rec := records["http.request|"+run.requests[label]]; rec == nil || fmt.Sprint(otlpPlain(rec["attributes"].(map[string]any)["error_code"])) != code {
+			t.Errorf("%s request record lacks error_code %s: %v", label, code, rec)
 		}
 	}
-	// What the comparison with TS skips as volatile (the version, queue time) is left out of Go's
-	// pinned trees and records too. The Go-only error attributes stay in them: they are Go's answer.
+	// The version and queue time are left out of the pinned trees, and durations of the records.
 	volatile := func(p string) bool {
 		return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms")
 	}
-	for _, label := range labels {
-		b := runs["go"].tree(runs["go"].requests[label])
-		if b == nil {
-			t.Errorf("%s: no go server span", label)
+	for _, label := range []string{"models", "unmatched", "missing", "invalid"} {
+		tree := run.tree(run.requests[label])
+		if tree == nil {
+			t.Errorf("%s: no server span", label)
 			continue
 		}
-		// A real model's chat (never on fake backends, where the goldens are recorded) varies
-		// from run to run, so it is compared with TS but not pinned.
-		pin := label != "chat"
-		if pin {
-			harness.PinJSON(t, label+" span tree", harness.PruneJSON(b, "", volatile))
+		harness.PinJSON(t, label+" span tree", harness.PruneJSON(tree, "", volatile))
+		rec := records["http.request|"+run.requests[label]]
+		if rec == nil {
+			t.Errorf("%s: http.request record missing", label)
+			continue
 		}
-		var a map[string]any
-		if tsLive() {
-			if a = runs["ts"].tree(runs["ts"].requests[label]); a == nil {
-				t.Errorf("%s: no ts server span", label)
-				continue
-			}
-		}
-		// Go names an error response's type and code on the server span
-		// and the request record (operator observability audit); TS does not.
-		goOnly := func(p string) bool {
-			for _, k := range []string{"localbase.error.type", "localbase.error.code", "error.type", "error_type", "error_code"} {
-				if strings.HasSuffix(p, "attributes."+k) {
-					return true
-				}
-			}
-			return false
-		}
-		skip := func(p string) bool { return volatile(p) || goOnly(p) }
-		if a != nil {
-			if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
-				t.Errorf("%s span tree differs:\n  %s", label, strings.Join(d, "\n  "))
-			}
-		}
-		for _, ev := range []string{"http.request", "inference.completed"} {
-			if label != "chat" && ev == "inference.completed" {
-				continue
-			}
-			rb := records["go"][ev+"|"+runs["go"].requests[label]]
-			if rb == nil {
-				t.Errorf("%s: %s go record missing", label, ev)
-				continue
-			}
-			nb := map[string]any{"attributes": normAttrs(rb["attributes"].(map[string]any)), "severity": rb["severityText"], "flags": rb["flags"]}
-			if pin {
-				harness.PinJSON(t, label+" "+ev+" record", harness.PruneJSON(nb, "", func(p string) bool { return strings.HasSuffix(p, "_ms") }))
-			}
-			if !tsLive() {
-				continue
-			}
-			ra := records["ts"][ev+"|"+runs["ts"].requests[label]]
-			if ra == nil {
-				t.Errorf("%s: %s ts record missing", label, ev)
-				continue
-			}
-			na := map[string]any{"attributes": normAttrs(ra["attributes"].(map[string]any)), "severity": ra["severityText"], "flags": ra["flags"]}
-			skipMs := func(p string) bool { return strings.HasSuffix(p, "_ms") || goOnly(p) }
-			if d := harness.DiffJSON("", na, nb, skipMs); len(d) > 0 {
-				t.Errorf("%s %s record differs:\n  %s", label, ev, strings.Join(d, "\n  "))
-			}
-		}
+		n := map[string]any{"attributes": normAttrs(rec["attributes"].(map[string]any)), "severity": rec["severityText"], "flags": rec["flags"]}
+		harness.PinJSON(t, label+" http.request record", harness.PruneJSON(n, "", func(p string) bool { return strings.HasSuffix(p, "_ms") }))
 	}
 }
 
-// TestDifferentialOTLPFailures: a failing collector is reported once in
-// the local log, with the same event and attributes on both gateways, and
-// never exported.
+// TestDifferentialOTLPFailures: a failing collector is reported once in the local log, and never
+// exported. The reports are pinned (they were compared with TS's until step 7).
 func TestDifferentialOTLPFailures(t *testing.T) {
-	fixture := pinnedFixture(t)
-	got := map[string][]map[string]any{}
-	impls := []string{"go"}
-	if tsLive() {
-		impls = append(impls, "ts")
-	}
-	for _, impl := range impls {
-		run := runOTLP(t, impl, 500, fixture...)
-		for _, e := range localEvents(t, run.root) {
-			if strings.HasPrefix(fmt.Sprint(e["eventName"]), "observability.export") {
-				a := e["attributes"].(map[string]any)
-				got[impl] = append(got[impl], map[string]any{"event": e["eventName"], "message": e["message"], "severity": e["severity"],
-					"signal": a["signal"], "detail": a["detail"], "component": e["component"], "category": e["category"]})
-			}
+	run := runOTLP(t, "go", 500, pinnedFixture(t)...)
+	var got []map[string]any
+	for _, e := range localEvents(t, run.root) {
+		if strings.HasPrefix(fmt.Sprint(e["eventName"]), "observability.export") {
+			a := e["attributes"].(map[string]any)
+			got = append(got, map[string]any{"event": e["eventName"], "message": e["message"], "severity": e["severity"],
+				"signal": a["signal"], "detail": a["detail"], "component": e["component"], "category": e["category"]})
 		}
-		sort.Slice(got[impl], func(i, j int) bool { return fmt.Sprint(got[impl][i]) < fmt.Sprint(got[impl][j]) })
 	}
-	if len(got["go"]) == 0 {
-		t.Fatal("go reported no export failure")
+	sort.Slice(got, func(i, j int) bool { return fmt.Sprint(got[i]) < fmt.Sprint(got[j]) })
+	if len(got) == 0 {
+		t.Fatal("no export failure was reported")
 	}
-	// Each signal's first failure, then (at shutdown) a summary when more
-	// batches failed: compare the distinct reports.
-	distinct := func(list []map[string]any) []any {
-		seen := map[string]bool{}
-		var out []any
-		for _, e := range list {
-			if k := fmt.Sprint(e); !seen[k] {
-				seen[k] = true
-				out = append(out, e)
-			}
+	// Each signal's first failure, then (at shutdown) a summary when more batches failed: the
+	// distinct reports are pinned.
+	seen := map[string]bool{}
+	var distinct []any
+	for _, e := range got {
+		if k := fmt.Sprint(e); !seen[k] {
+			seen[k] = true
+			distinct = append(distinct, e)
 		}
-		return out
 	}
-	b := distinct(got["go"])
-	harness.PinJSON(t, "failure reports", b)
-	if !tsLive() {
-		return
-	}
-	a := distinct(got["ts"])
-	if d := harness.DiffJSON("", a, b, nil); len(d) > 0 {
-		t.Errorf("failure reports differ:\n  %s\nts %v\ngo %v", strings.Join(d, "\n  "), a, b)
-	}
+	harness.PinJSON(t, "failure reports", distinct)
 }
 
-// TestCLIOtelEnvironment: doctor and configure report the effective
-// exporter settings, OTEL_* applied, as TS does; an invalid variable fails
-// both the same way.
+// TestCLIOtelEnvironment: doctor and configure report the effective exporter settings, OTEL_*
+// applied (pinned; TS's until step 7), and never print an exporter header.
 func TestCLIOtelEnvironment(t *testing.T) {
 	pinned(t)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
-	initOwnTwinRoots(t, roots)
+	gr := cliRoot(t)
+	initRoot(t, gr)
 	envs := [][]string{
 		{"OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example:4318/base/", "OTEL_TRACES_SAMPLER=traceidratio", "OTEL_TRACES_SAMPLER_ARG=0.25"},
 		{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://traces.example/v1/traces", "OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret},
@@ -434,18 +351,8 @@ func TestCLIOtelEnvironment(t *testing.T) {
 	}
 	for _, env := range envs {
 		for _, args := range [][]string{{"--json", "doctor"}, {"--json", "configure", "--defaults", "--no-create-key"}} {
-			a, b := runCLIEnv(t, "ts", ts, env, args...), runCLIEnv(t, "go", gr, env, args...)
-			label := fmt.Sprint(env, args)
-			if a.code != b.code {
-				t.Errorf("%s: exit ts=%d go=%d\n%s\n%s", label, a.code, b.code, a.stdout+a.stderr, b.stdout+b.stderr)
-				continue
-			}
-			if strings.Contains(a.stdout+b.stdout+a.stderr+b.stderr, otlpSecret) {
-				t.Errorf("%s: an exporter header was printed", label)
-			}
-			skip := func(p string) bool { return p == ".error.message" }
-			if d := harness.DiffJSON("", normalize(t, a.stdout, ts), normalize(t, b.stdout, gr), skip); len(d) > 0 {
-				t.Errorf("%s differs:\n  %s", label, strings.Join(d, "\n  "))
+			if r := runCLIEnv(t, "go", gr, env, args...); strings.Contains(r.stdout+r.stderr, otlpSecret) {
+				t.Errorf("%v %v: an exporter header was printed", env, args)
 			}
 		}
 	}
@@ -464,9 +371,6 @@ func bodyText(v any) any {
 // the shutdown flush's failure reports reach events.jsonl, written while
 // the file sink is still open, and nothing about OTLP reaches stderr.
 func TestOtelShutdownDiagnosticsStayInTheLog(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true,
 		env: []string{"OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:" + strconv.Itoa(testutil.FreePort())}}

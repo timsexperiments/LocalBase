@@ -1,7 +1,6 @@
 package system
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,15 +9,10 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// A policy no one could manage access under is refused, in plain words on Go and in
-// TS's wording on TS: a deliberate difference (DESIGN §13.6 item 12).
+// A policy no one could manage access under is refused, in plain words (DESIGN §13.6 item 12;
+// TS worded it as "At least one reachable role must grant access:manage.").
 func TestPolicyLockoutMessage(t *testing.T) {
 	impls := map[string]string{"go": "This policy would lock everyone out: at least one person it names must be able to manage access."}
-	if harness.Impl() == "both" {
-		if _, err := exec.LookPath("bun"); err == nil {
-			impls["ts"] = "At least one reachable role must grant access:manage."
-		}
-	}
 	for impl, want := range impls {
 		t.Run(impl, func(t *testing.T) {
 			dir := fsguard.ScratchDir(t)
@@ -43,14 +37,13 @@ func TestPolicyLockoutMessage(t *testing.T) {
 			}
 		})
 	}
-	// The API, which Admin shows: same status and code, plainer words on Go.
+	// The API, which Admin shows: TS's status and code, in plainer words.
 	for _, tg := range harness.Targets(t) {
 		h := harness.Bearer(tg.Admin)
 		h["Content-Type"] = "application/json"
 		r := harness.Do(t, "POST", tg.BaseURL+"/_localbase/access-management", h, `{"action":"apply-policy","expectedPolicyRevision":null,"policy":`+
 			`{"roles":[{"name":"chat","description":"Chat","permissions":["inference:chat"]}],"bindings":[{"kind":"email","role":"chat","email":"owner@example.com"}],"defaultRole":null}}`)
-		want := map[string]string{"go": "This policy would lock everyone out", "ts": "The management request is invalid."}[tg.Name]
-		if r.Status != 400 || !strings.Contains(string(r.Body), `"code":"validation_failed"`) || !strings.Contains(string(r.Body), want) {
+		if r.Status != 400 || !strings.Contains(string(r.Body), `"code":"validation_failed"`) || !strings.Contains(string(r.Body), "This policy would lock everyone out") {
 			t.Errorf("%s API: %d %s", tg.Name, r.Status, r.Body)
 		}
 	}
