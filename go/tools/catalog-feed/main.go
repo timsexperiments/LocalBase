@@ -77,7 +77,7 @@ func run(check bool) error {
 			}
 			continue
 		}
-		if err := os.WriteFile(path, o.body, 0o644); err != nil {
+		if err := os.WriteFile(path, o.body, 0o644); err != nil { //nolint:gosec // G306: a published feed in the repository, readable like the rest of it.
 			return err
 		}
 		fmt.Printf("Wrote %s.\n", path)
