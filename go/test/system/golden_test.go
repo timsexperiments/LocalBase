@@ -271,3 +271,46 @@ func firstLineDiff(want, got string) string {
 	}
 	return "differs"
 }
+
+// valueMask is a named part of a pinned value that depends on the machine, by DiffJSON path.
+type valueMask struct {
+	name  string
+	match func(path string) bool
+}
+
+// maskJSON is v with every value a mask matches replaced by "<host>", and the names of the masks
+// that matched, sorted.
+func maskJSON(v any, path string, masks []valueMask) (any, []string) {
+	seen := map[string]bool{}
+	var walk func(v any, path string) any
+	walk = func(v any, path string) any {
+		for _, m := range masks {
+			if m.match(path) {
+				seen[m.name] = true
+				return "<host>"
+			}
+		}
+		switch x := v.(type) {
+		case map[string]any:
+			out := map[string]any{}
+			for k, e := range x {
+				out[k] = walk(e, path+"."+k)
+			}
+			return out
+		case []any:
+			out := make([]any, len(x))
+			for i, e := range x {
+				out[i] = walk(e, fmt.Sprintf("%s[%d]", path, i))
+			}
+			return out
+		}
+		return v
+	}
+	out := walk(v, path)
+	used := make([]string, 0, len(seen))
+	for name := range seen {
+		used = append(used, name)
+	}
+	sort.Strings(used)
+	return out, used
+}

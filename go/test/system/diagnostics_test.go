@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -133,8 +134,30 @@ func TestCLIDiagnostics(t *testing.T) {
 	}
 }
 
+// manifestMasks are a manifest's fields that depend on the machine and not on LocalBase, each
+// named. A pinned manifest carries the masks it needed, so a masked field that disappears fails
+// the comparison instead of passing unnoticed.
+var manifestMasks = []valueMask{
+	// The hardware section: memory.DetectSpecs' CPU, GPU and memory (not the lab host).
+	{name: "manifest hardware", match: func(p string) bool {
+		return slices.Contains([]string{".hardware.data.cpu", ".hardware.data.gpu", ".hardware.data.memoryGb", ".hardware.data.vramGb"}, p)
+	}},
+	// Each model's fit: internal/diagnostics takes it from DetectSpecs' GPU memory, as the
+	// "diagnostics fit" mask says of the human lines.
+	{name: "manifest fit", match: func(p string) bool {
+		return strings.HasPrefix(p, ".models.data.models[") && (strings.HasSuffix(p, ".memory.systemMemoryGb") || strings.HasSuffix(p, ".memory.verdict"))
+	}},
+	// Whether the user's service manager (launchd, systemd --user) answers is the session's, and
+	// so is the service state it reports: "unknown" where no manager answers (a container),
+	// "not_installed" where one does.
+	{name: "service manager session", match: func(p string) bool {
+		return p == ".service.data.managerAvailable" || p == ".service.data.managerState" || p == ".service.data.state"
+	}},
+}
+
 // pinManifest pins a bundle's manifest, normalized as the transcripts are (scrub), without when it
-// was made and by which build, and checks it is JSON.stringify(manifest, null, 2) plus a newline.
+// was made and by which build, with manifestMasks applied, and checks it is
+// JSON.stringify(manifest, null, 2) plus a newline.
 func pinManifest(t *testing.T, name string, raw []byte, root string) {
 	t.Helper()
 	if string(raw[:2]) != "{\n" || !strings.HasSuffix(string(raw), "}\n") {
@@ -144,9 +167,11 @@ func pinManifest(t *testing.T, name string, raw []byte, root string) {
 	if err := json.Unmarshal([]byte(scrub(string(raw), root, nil, nil)), &v); err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
-	harness.PinJSON(t, name, harness.PruneJSON(v, "", func(p string) bool {
+	v = harness.PruneJSON(v, "", func(p string) bool {
 		return p == ".generatedAt" || p == ".version" || p == ".logs.data.serviceStderr.modifiedAt" // written separately
-	}))
+	})
+	masked, used := maskJSON(v, "", manifestMasks)
+	harness.PinJSON(t, name, map[string]any{"masks": used, "manifest": masked})
 }
 
 // plantPrivateState writes secrets where M3.5 and M4 keep private state: a

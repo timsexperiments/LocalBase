@@ -1,0 +1,326 @@
+{
+  "manifest": {
+    "manifest": {
+      "configuration": {
+        "available": true,
+        "data": {
+          "activeModels": {
+            "image": "dreamshaper-8-lcm",
+            "llm": "qwen3.5-4b-q4_k_m",
+            "stt": "whisper-base-q8_0",
+            "tts": "",
+            "video": ""
+          },
+          "contextMode": "auto",
+          "contextSize": 131072,
+          "parallel": "auto",
+          "selectedModels": {
+            "image": [
+              "dreamshaper-8-lcm"
+            ],
+            "llm": [
+              "qwen3.5-4b-q4_k_m"
+            ],
+            "stt": [
+              "whisper-base-q8_0"
+            ],
+            "tts": [],
+            "video": []
+          }
+        }
+      },
+      "hardware": {
+        "available": true,
+        "data": {
+          "arch": "arm64",
+          "cpu": "\u003chost\u003e",
+          "gpu": "\u003chost\u003e",
+          "memoryGb": "\u003chost\u003e",
+          "os": "macOS",
+          "vramGb": "\u003chost\u003e"
+        }
+      },
+      "logs": {
+        "available": true,
+        "data": {
+          "bytes": 1551,
+          "includedEvents": 6,
+          "serviceStderr": {
+            "archiveBytes": 0,
+            "bytes": 25
+          },
+          "window": {
+            "newest": "\u003ctime\u003e",
+            "oldest": "\u003ctime\u003e"
+          }
+        }
+      },
+      "models": {
+        "available": true,
+        "data": {
+          "catalogFeed": {
+            "added": [],
+            "annotations": 0,
+            "annotationsSkipped": 0,
+            "builtIn": 0,
+            "checkedAt": null,
+            "enabled": false,
+            "entries": 0,
+            "fetchedAt": null,
+            "lastError": null,
+            "problem": "LOCALBASE_CATALOG_FEED_URL must not contain credentials; the feed is off.",
+            "revision": null,
+            "schemaVersion": null,
+            "skipped": 0,
+            "source": "environment",
+            "stale": false,
+            "url": null
+          },
+          "catalogIssues": [
+            {
+              "file": "broken.json",
+              "message": "The patched entry is invalid: storageGb: Invalid input: expected number, received string",
+              "modelId": "qwen3.5-4b-q4_k_m",
+              "tier": "user"
+            }
+          ],
+          "models": [
+            {
+              "active": true,
+              "capabilities": [
+                {
+                  "id": "text-generation",
+                  "source": "declared"
+                },
+                {
+                  "id": "tool-calling",
+                  "source": "declared"
+                }
+              ],
+              "capabilityEvidence": [],
+              "capabilityMismatches": [],
+              "catalogTier": "built-in",
+              "complete": false,
+              "id": "qwen3.5-4b-q4_k_m",
+              "inputModalities": {
+                "source": "detected",
+                "values": [
+                  "text"
+                ]
+              },
+              "kind": "llm",
+              "memory": {
+                "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+                "minimumGb": 5,
+                "observedPeakBytes": null,
+                "source": "measured",
+                "systemMemoryGb": "\u003chost\u003e",
+                "verdict": "\u003chost\u003e"
+              },
+              "patchedFields": [],
+              "runtimeBuild": null,
+              "selected": true,
+              "size": "4B",
+              "storageGb": 3.01,
+              "trust": "qualified",
+              "unsupportedCapabilities": []
+            },
+            {
+              "active": true,
+              "capabilities": [
+                {
+                  "id": "speech-to-text",
+                  "source": "declared"
+                },
+                {
+                  "id": "multilingual",
+                  "source": "declared"
+                }
+              ],
+              "capabilityEvidence": [],
+              "capabilityMismatches": [],
+              "catalogTier": "user",
+              "complete": false,
+              "id": "whisper-base-q8_0",
+              "inputModalities": {
+                "source": "declared",
+                "values": [
+                  "audio"
+                ]
+              },
+              "kind": "stt",
+              "memory": {
+                "launchShape": "default",
+                "minimumGb": 1,
+                "observedPeakBytes": null,
+                "source": "estimate",
+                "systemMemoryGb": "\u003chost\u003e",
+                "verdict": "\u003chost\u003e"
+              },
+              "patchedFields": [
+                "repositoryRevision",
+                "notes"
+              ],
+              "runtimeBuild": null,
+              "selected": true,
+              "size": "base",
+              "storageGb": 0.08,
+              "trust": "modified",
+              "unsupportedCapabilities": []
+            },
+            {
+              "active": true,
+              "capabilities": [
+                {
+                  "id": "text-to-image",
+                  "source": "detected"
+                }
+              ],
+              "capabilityEvidence": [
+                "image profile checkpoint: text-to-image only"
+              ],
+              "capabilityMismatches": [],
+              "catalogTier": "built-in",
+              "complete": false,
+              "id": "dreamshaper-8-lcm",
+              "inputModalities": {
+                "source": "declared",
+                "values": [
+                  "text"
+                ]
+              },
+              "kind": "image",
+              "memory": {
+                "launchShape": "default",
+                "minimumGb": 5,
+                "observedPeakBytes": null,
+                "source": "measured",
+                "systemMemoryGb": "\u003chost\u003e",
+                "verdict": "\u003chost\u003e"
+              },
+              "patchedFields": [],
+              "runtimeBuild": null,
+              "selected": true,
+              "size": "2.0GB",
+              "storageGb": 2.13,
+              "trust": "qualified",
+              "unsupportedCapabilities": []
+            }
+          ]
+        }
+      },
+      "observability": {
+        "available": true,
+        "data": {
+          "enabled": true,
+          "endpoint": "http://collector.example:4318/base/",
+          "sampleRatio": 1,
+          "source": "environment"
+        }
+      },
+      "platform": {
+        "arch": "arm64",
+        "os": "darwin"
+      },
+      "schemaVersion": 1,
+      "service": {
+        "available": true,
+        "data": {
+          "definitionInstalled": false,
+          "enabled": null,
+          "gateway": {
+            "state": "not_ready"
+          },
+          "manager": "launchd",
+          "managerAvailable": "\u003chost\u003e",
+          "managerState": "\u003chost\u003e",
+          "pid": null,
+          "restartCount": null,
+          "state": "\u003chost\u003e",
+          "uptimeSeconds": null
+        }
+      },
+      "voices": {
+        "available": true,
+        "data": {
+          "customVoices": 1
+        }
+      }
+    },
+    "masks": [
+      "manifest fit",
+      "manifest hardware",
+      "service manager session"
+    ]
+  },
+  "manifest of a root never initialized": {
+    "manifest": {
+      "configuration": {
+        "available": false,
+        "error": "configuration_unavailable"
+      },
+      "hardware": {
+        "available": true,
+        "data": {
+          "arch": "arm64",
+          "cpu": "\u003chost\u003e",
+          "gpu": "\u003chost\u003e",
+          "memoryGb": "\u003chost\u003e",
+          "os": "macOS",
+          "vramGb": "\u003chost\u003e"
+        }
+      },
+      "logs": {
+        "available": false,
+        "error": "logs_unavailable"
+      },
+      "models": {
+        "available": false,
+        "error": "models_unavailable"
+      },
+      "observability": {
+        "available": false,
+        "error": "otel_unavailable"
+      },
+      "platform": {
+        "arch": "arm64",
+        "os": "darwin"
+      },
+      "schemaVersion": 1,
+      "service": {
+        "available": true,
+        "data": {
+          "definitionInstalled": false,
+          "enabled": null,
+          "gateway": {
+            "state": "not_ready"
+          },
+          "manager": "launchd",
+          "managerAvailable": "\u003chost\u003e",
+          "managerState": "\u003chost\u003e",
+          "pid": null,
+          "restartCount": null,
+          "state": "\u003chost\u003e",
+          "uptimeSeconds": null
+        }
+      },
+      "voices": {
+        "available": false,
+        "error": "voices_unavailable"
+      }
+    },
+    "masks": [
+      "manifest hardware",
+      "service manager session"
+    ]
+  },
+  "redacted log": [
+    "{\"schemaVersion\":2,\"id\":\"\u003cuuid\u003e\",\"timestamp\":\"\u003ctime\u003e\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+    "{\"schemaVersion\":2,\"id\":\"\u003cuuid\u003e\",\"timestamp\":\"\u003ctime\u003e\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Upstream said Authorization=[REDACTED] [REDACTED] and token=[REDACTED]\"}",
+    "{\"schemaVersion\":2,\"id\":\"\u003cuuid\u003e\",\"timestamp\":\"\u003ctime\u003e\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"}",
+    "{\"schemaVersion\":2,\"id\":\"\u003cuuid\u003e\",\"timestamp\":\"\u003ctime\u003e\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+    "{\"schemaVersion\":2,\"id\":\"\u003cuuid\u003e\",\"timestamp\":\"\u003ctime\u003e\",\"severity\":\"warn\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"llama-server\",\"runtime\":\"llm\",\"message\":\"Slow start.\"}",
+    "{\"schemaVersion\":2,\"id\":\"\u003cuuid\u003e\",\"timestamp\":\"\u003ctime\u003e\",\"severity\":\"info\",\"eventName\":\"voices.created\",\"category\":\"runtime\",\"component\":\"voices\",\"runtime\":\"tts\",\"message\":\"Custom voice created.\",\"attributes\":{\"voice_id\":\"voice_planted\"}}",
+    ""
+  ]
+}
