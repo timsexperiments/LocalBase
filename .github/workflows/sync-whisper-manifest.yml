@@ -61,7 +61,7 @@ jobs:
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           git fetch origin "$BASE_BRANCH"
-          git show "origin/$BASE_BRANCH:src/manager/managed-runtime-manifest.json" > "$RUNNER_TEMP/default-managed-runtime-manifest.json"
+          git show "origin/$BASE_BRANCH:go/internal/runtime/managed-runtime-manifest.json" > "$RUNNER_TEMP/default-managed-runtime-manifest.json"
       - name: Check default branch manifest
         id: default-manifest
         run: >-
@@ -95,24 +95,22 @@ jobs:
         if: steps.default-manifest.outputs.synchronized == 'false'
         run: >-
           bun run scripts/runtimes/whisper-release.ts update-manifest
-          --manifest src/manager/managed-runtime-manifest.json
+          --manifest go/internal/runtime/managed-runtime-manifest.json
           --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
       - name: Verify managed runtime manifest
         if: steps.default-manifest.outputs.synchronized == 'false'
         run: >-
           bun run scripts/runtimes/whisper-release.ts verify-manifest
-          --manifest src/manager/managed-runtime-manifest.json
+          --manifest go/internal/runtime/managed-runtime-manifest.json
           --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
       - name: Commit manifest update
         id: commit
         if: steps.default-manifest.outputs.synchronized == 'false'
         run: |
-          if git diff --quiet -- src/manager/managed-runtime-manifest.json; then
+          if git diff --quiet -- go/internal/runtime/managed-runtime-manifest.json; then
             printf 'changed=false\n' >> "$GITHUB_OUTPUT"
           else
-            # The Go build embeds its own copy; the two stay identical until the TS helpers stop reading src/ (R4b).
-            cp src/manager/managed-runtime-manifest.json go/internal/runtime/managed-runtime-manifest.json
-            git add src/manager/managed-runtime-manifest.json go/internal/runtime/managed-runtime-manifest.json
+            git add go/internal/runtime/managed-runtime-manifest.json
             git commit -m "chore: pin ${{ steps.runtime.outputs.tag }} runtime archives"
             printf 'changed=true\n' >> "$GITHUB_OUTPUT"
           fi

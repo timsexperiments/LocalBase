@@ -74,22 +74,20 @@ jobs:
       - name: Update and verify only kokoro-tts manifest entries
         run: |
           bun run scripts/runtimes/kokoro-release.ts update-manifest \
-            --manifest src/manager/managed-runtime-manifest.json \
+            --manifest go/internal/runtime/managed-runtime-manifest.json \
             --receipt "$RUNNER_TEMP/kokoro-release-receipt.json"
           bun run scripts/runtimes/kokoro-release.ts verify-manifest \
-            --manifest src/manager/managed-runtime-manifest.json \
+            --manifest go/internal/runtime/managed-runtime-manifest.json \
             --receipt "$RUNNER_TEMP/kokoro-release-receipt.json"
       - name: Commit manifest update
         id: commit
         env:
           RUNTIME_TAG: ${{ steps.runtime.outputs.tag }}
         run: |
-          if git diff --quiet -- src/manager/managed-runtime-manifest.json; then
+          if git diff --quiet -- go/internal/runtime/managed-runtime-manifest.json; then
             printf 'changed=false\n' >> "$GITHUB_OUTPUT"
           else
-            # The Go build embeds its own copy; the two stay identical until the TS helpers stop reading src/ (R4b).
-            cp src/manager/managed-runtime-manifest.json go/internal/runtime/managed-runtime-manifest.json
-            git add src/manager/managed-runtime-manifest.json go/internal/runtime/managed-runtime-manifest.json
+            git add go/internal/runtime/managed-runtime-manifest.json
             git commit -m "chore: pin $RUNTIME_TAG kokoro-tts runtime archives"
             printf 'changed=true\n' >> "$GITHUB_OUTPUT"
           fi
