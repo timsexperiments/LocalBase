@@ -106,14 +106,21 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 // leaving it to check nothing.
 func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 	repo := testutil.RepoRoot(t)
+	// The module's scripts, by their path from the repository's top (go/scripts/... while the
+	// module is in go/, scripts/... at the top), as the release workflow names them.
+	module, err := filepath.Rel(repo, testutil.ModuleRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildScript := filepath.ToSlash(filepath.Join(module, "scripts", "build.sh"))
 	goflagsTags := regexp.MustCompile(`GOFLAGS[^\n]*-tags`)
-	for _, p := range []string{"go/scripts/build.sh", "scripts/release/build.sh", ".github/workflows/release-go.yml"} {
+	for _, p := range []string{buildScript, "scripts/release/build.sh", ".github/workflows/release-go.yml"} {
 		b, err := os.ReadFile(filepath.Join(repo, p))
 		if err != nil {
 			t.Fatalf("the release build's %s: %v", p, err)
 		}
 		refused := []string{"testKey", "localbase_testkey", "-tags"}
-		if p != "go/scripts/build.sh" { // its comment says the rehearsal reads its flags; below, it builds only the command
+		if p != buildScript { // its comment says the rehearsal reads its flags; below, it builds only the command
 			refused = append(refused, "upgrade-rehearsal")
 		}
 		for _, word := range refused {
@@ -124,14 +131,14 @@ func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 		if goflagsTags.Match(b) {
 			t.Errorf("%s sets tags through GOFLAGS", p)
 		}
-		if p == "go/scripts/build.sh" && (!strings.Contains(string(b), "./cmd/localbase") || strings.Contains(string(b), "./tools/")) {
+		if p == buildScript && (!strings.Contains(string(b), "./cmd/localbase") || strings.Contains(string(b), "./tools/")) {
 			t.Errorf("%s builds something other than ./cmd/localbase", p)
 		}
 	}
-	// What the release builds is checked too, by go/scripts/check-release-artifact.sh, between the
-	// build and the step that keeps the binaries. A move of the script, or of the step, fails here
-	// rather than leaving the release to check nothing.
-	const check = "go/scripts/check-release-artifact.sh"
+	// What the release builds is checked too, by the module's scripts/check-release-artifact.sh,
+	// between the build and the step that keeps the binaries. A move of the script, or of the step,
+	// fails here rather than leaving the release to check nothing.
+	check := filepath.ToSlash(filepath.Join(module, "scripts", "check-release-artifact.sh"))
 	if _, err := os.Stat(filepath.Join(repo, check)); err != nil {
 		t.Errorf("the release's artifact check: %v", err)
 	}

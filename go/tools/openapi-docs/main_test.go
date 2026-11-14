@@ -11,11 +11,12 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 func theDocument(t *testing.T) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", documentPath))
+	raw, err := os.ReadFile(filepath.Join(testutil.ModuleRoot(t), documentPath))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +33,7 @@ func theRender(t *testing.T, raw []byte) []byte {
 }
 
 func TestPageIsCurrent(t *testing.T) {
-	current, err := os.ReadFile(filepath.Join("..", "..", pagePath))
+	current, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), pagePath))
 	if err != nil {
 		t.Fatal(err)
 	}
