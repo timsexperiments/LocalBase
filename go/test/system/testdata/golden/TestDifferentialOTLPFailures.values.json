@@ -1,0 +1,22 @@
+{
+  "failure reports": [
+    {
+      "category": "logging",
+      "component": "otel",
+      "detail": "collector responded with HTTP 500",
+      "event": "observability.export-failed",
+      "message": "OTLP export failed.",
+      "severity": "warn",
+      "signal": "logs"
+    },
+    {
+      "category": "logging",
+      "component": "otel",
+      "detail": "collector responded with HTTP 500",
+      "event": "observability.export-failed",
+      "message": "OTLP export failed.",
+      "severity": "warn",
+      "signal": "traces"
+    }
+  ]
+}

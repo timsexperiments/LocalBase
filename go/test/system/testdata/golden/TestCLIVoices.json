@@ -1,0 +1,192 @@
+{
+  "calls": [
+    {
+      "args": [
+        "--json",
+        "init"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"configuration\":{\"activeImageModel\":\"dreamshaper-8-lcm\",\"activeLlmModel\":\"qwen3.5-4b-q4_k_m\",\"activeSttModel\":\"whisper-base-q8_0\",\"activeTtsModel\":\"\",\"activeVideoModel\":\"\",\"ctxMode\":\"auto\",\"ctxSize\":131072,\"hfTokenConfigured\":false,\"host\":\"127.0.0.1\",\"imageModelsDir\":\"\u003croot\u003e/models/image\",\"llmModelsDir\":\"\u003croot\u003e/models/llm\",\"memory\":{\"acceleratorReserve\":{\"percent\":10,\"minimumGb\":2},\"systemReserve\":{\"percent\":15,\"minimumGb\":8}},\"observability\":{\"enabled\":false,\"endpoint\":\"\",\"persistedEndpoint\":\"\",\"sampleRatio\":1,\"sampler\":\"parentbased_traceidratio\",\"source\":\"disabled\"},\"parallel\":\"auto\",\"port\":18000,\"root\":\"\u003croot\u003e\",\"selectedImageModels\":[\"dreamshaper-8-lcm\"],\"selectedLlmModels\":[\"qwen3.5-4b-q4_k_m\"],\"selectedSttModels\":[\"whisper-base-q8_0\"],\"selectedTtsModels\":[],\"selectedVideoModels\":[],\"sttHost\":\"127.0.0.1\",\"sttModelsDir\":\"\u003croot\u003e/models/stt\",\"sttPort\":18080,\"ttsModelsDir\":\"\u003croot\u003e/models/tts\",\"videoModelsDir\":\"\u003croot\u003e/models/video\"}},\"ok\":true}\n",
+      "stderr": "Initialized local-base at \u003croot\u003e\nLLM directory: \u003croot\u003e/models/llm\nSTT directory: \u003croot\u003e/models/stt\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "list"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"voices\":[]},\"ok\":true}\n",
+      "stderr": "No custom voices. Add one with: local-base voices add clip.wav --name \u003cname\u003e --consent\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "add",
+        "\u003ctmp\u003e/003/clip.wav",
+        "--name",
+        "Narrator"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Pass --consent to confirm: I have the right to use this voice: it is my own, or its speaker has given permission for it to be cloned here.\"},\"ok\":false}\n",
+      "stderr": "Error: Pass --consent to confirm: I have the right to use this voice: it is my own, or its speaker has given permission for it to be cloned here.\nAdd a custom TTS voice from a 3 to 30 second WAV recording\n\nUSAGE local-base voices add [OPTIONS] \u003cfile\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n      --name=\u003cname\u003e    Display name\n          --consent    Confirm the voice is yours or its speaker allowed it to be cloned\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "add",
+        "\u003ctmp\u003e/003/missing.wav",
+        "--name",
+        "Narrator",
+        "--consent"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Cannot read audio file: \u003ctmp\u003e/003/missing.wav\"},\"ok\":false}\n",
+      "stderr": "Error: Cannot read audio file: \u003ctmp\u003e/003/missing.wav\nAdd a custom TTS voice from a 3 to 30 second WAV recording\n\nUSAGE local-base voices add [OPTIONS] \u003cfile\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n      --name=\u003cname\u003e    Display name\n          --consent    Confirm the voice is yours or its speaker allowed it to be cloned\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "add",
+        "\u003ctmp\u003e/003",
+        "--name",
+        "Narrator",
+        "--consent"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Cannot read audio file: \u003ctmp\u003e/003\"},\"ok\":false}\n",
+      "stderr": "Error: Cannot read audio file: \u003ctmp\u003e/003\nAdd a custom TTS voice from a 3 to 30 second WAV recording\n\nUSAGE local-base voices add [OPTIONS] \u003cfile\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n      --name=\u003cname\u003e    Display name\n          --consent    Confirm the voice is yours or its speaker allowed it to be cloned\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "add",
+        "\u003ctmp\u003e/003/short.wav",
+        "--name",
+        "Narrator",
+        "--consent"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"The WAV file is truncated or has an invalid chunk size.\"},\"ok\":false}\n",
+      "stderr": "Error: The WAV file is truncated or has an invalid chunk size.\nAdd a custom TTS voice from a 3 to 30 second WAV recording\n\nUSAGE local-base voices add [OPTIONS] \u003cfile\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n      --name=\u003cname\u003e    Display name\n          --consent    Confirm the voice is yours or its speaker allowed it to be cloned\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "add",
+        "\u003ctmp\u003e/003/clip.wav",
+        "--name",
+        "Harbor",
+        "--consent"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"That name belongs to a built-in voice.\"},\"ok\":false}\n",
+      "stderr": "Error: That name belongs to a built-in voice.\nAdd a custom TTS voice from a 3 to 30 second WAV recording\n\nUSAGE local-base voices add [OPTIONS] \u003cfile\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n      --name=\u003cname\u003e    Display name\n          --consent    Confirm the voice is yours or its speaker allowed it to be cloned\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "add",
+        "\u003ctmp\u003e/003/clip.wav",
+        "--name",
+        " Narrator ",
+        "--consent"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"voice\":{\"id\":\"voice-\u003cid\u003e\",\"name\":\"Narrator\",\"durationMs\":4000,\"sizeBytes\":192044,\"sha256\":\"9f9bad6c84a418b9d9f3c624ee9292c233f8213886f2a0ed69371f9ea85826aa\",\"createdAt\":\"\u003ctime\u003e\",\"consent\":{\"statement\":\"voice-consent-v1\",\"attestedAt\":\"\u003ctime\u003e\"},\"createdBy\":\"cli\"}},\"ok\":true}\n",
+      "stderr": "Added voice voice-\u003cid\u003e | Narrator | 4.0 s | created=\u003ctime\u003e | by=cli\nUse it with \"voice\": \"voice-\u003cid\u003e\" on /v1/audio/speech.\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "add",
+        "\u003ctmp\u003e/003/clip.wav",
+        "--name",
+        "narrator",
+        "--consent"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Another voice already uses that name.\"},\"ok\":false}\n",
+      "stderr": "Error: Another voice already uses that name.\nAdd a custom TTS voice from a 3 to 30 second WAV recording\n\nUSAGE local-base voices add [OPTIONS] \u003cfile\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n      --name=\u003cname\u003e    Display name\n          --consent    Confirm the voice is yours or its speaker allowed it to be cloned\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "list"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"voices\":[{\"id\":\"voice-\u003cid\u003e\",\"name\":\"Narrator\",\"durationMs\":4000,\"sizeBytes\":192044,\"sha256\":\"9f9bad6c84a418b9d9f3c624ee9292c233f8213886f2a0ed69371f9ea85826aa\",\"createdAt\":\"\u003ctime\u003e\",\"consent\":{\"statement\":\"voice-consent-v1\",\"attestedAt\":\"\u003ctime\u003e\"},\"createdBy\":\"cli\"}]},\"ok\":true}\n",
+      "stderr": "voice-\u003cid\u003e | Narrator | 4.0 s | created=\u003ctime\u003e | by=cli\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "remove",
+        "voice-\u003cid\u003e"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Voice not found.\"},\"ok\":false}\n",
+      "stderr": "Error: Voice not found.\nDelete a custom TTS voice and its recording\n\nUSAGE local-base voices remove [OPTIONS] \u003cvoiceId\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "remove",
+        "../etc"
+      ],
+      "code": 2,
+      "stdout": "{\"error\":{\"code\":\"invalid_input\",\"message\":\"Voice not found.\"},\"ok\":false}\n",
+      "stderr": "Error: Voice not found.\nDelete a custom TTS voice and its recording\n\nUSAGE local-base voices remove [OPTIONS] \u003cvoiceId\u003e\n\nOPTIONS\n\n      --root=\u003cpath\u003e    LocalBase data directory\n  --non-interactive    Never open interactive prompts\n             --json    Emit machine-readable JSON\n\nLicense: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "list"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"voices\":[{\"id\":\"voice-\u003cid\u003e\",\"name\":\"Narrator\",\"durationMs\":4000,\"sizeBytes\":192044,\"sha256\":\"9f9bad6c84a418b9d9f3c624ee9292c233f8213886f2a0ed69371f9ea85826aa\",\"createdAt\":\"\u003ctime\u003e\",\"consent\":{\"statement\":\"voice-consent-v1\",\"attestedAt\":\"\u003ctime\u003e\"},\"createdBy\":\"cli\"}]},\"ok\":true}\n",
+      "stderr": "voice-\u003cid\u003e | Narrator | 4.0 s | created=\u003ctime\u003e | by=cli\n"
+    },
+    {
+      "args": [
+        "voices",
+        "list"
+      ],
+      "code": 0,
+      "stdout": "voice-\u003cid\u003e | Narrator | 4.0 s | created=\u003ctime\u003e | by=cli\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "remove",
+        "voice-\u003cid\u003e"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"voice\":{\"id\":\"voice-\u003cid\u003e\",\"name\":\"Narrator\",\"durationMs\":4000,\"sizeBytes\":192044,\"sha256\":\"9f9bad6c84a418b9d9f3c624ee9292c233f8213886f2a0ed69371f9ea85826aa\",\"createdAt\":\"\u003ctime\u003e\",\"consent\":{\"statement\":\"voice-consent-v1\",\"attestedAt\":\"\u003ctime\u003e\"},\"createdBy\":\"cli\"}},\"ok\":true}\n",
+      "stderr": "Removed voice voice-\u003cid\u003e (Narrator)\n"
+    },
+    {
+      "args": [
+        "--json",
+        "voices",
+        "list"
+      ],
+      "code": 0,
+      "stdout": "{\"data\":{\"voices\":[]},\"ok\":true}\n",
+      "stderr": "No custom voices. Add one with: local-base voices add clip.wav --name \u003cname\u003e --consent\n"
+    }
+  ]
+}

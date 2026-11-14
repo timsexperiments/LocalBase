@@ -1,0 +1,178 @@
+{
+  "invalid http.request record": {
+    "attributes": {
+      "auth_outcome": "invalid",
+      "error_code": "invalid_api_key",
+      "event.category": "http",
+      "event.name": "http.request",
+      "http.request.method": "GET",
+      "http.response.status_code": "{401 true}",
+      "http.route": "/v1/models",
+      "localbase.component": "gateway",
+      "localbase.event_id": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e",
+      "localbase.runtime": "gateway",
+      "localbase.schema_version": "{2 true}"
+    },
+    "flags": 1,
+    "severity": "WARN"
+  },
+  "invalid span tree": {
+    "attributes": {
+      "error.type": "invalid_api_key",
+      "http.request.method": "GET",
+      "http.response.status_code": "{401 true}",
+      "http.route": "/v1/models",
+      "localbase.auth.outcome": "invalid",
+      "localbase.error.code": "invalid_api_key",
+      "localbase.error.type": "invalid_request_error",
+      "localbase.http.response.duration_ms": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e"
+    },
+    "children": [],
+    "flags": 257,
+    "kind": 2,
+    "name": "GET /v1/models",
+    "resource": {
+      "service.name": "local-base",
+      "service.namespace": "localbase"
+    },
+    "scope": "local-base",
+    "status": "0"
+  },
+  "missing http.request record": {
+    "attributes": {
+      "auth_outcome": "missing",
+      "error_code": "invalid_api_key",
+      "event.category": "http",
+      "event.name": "http.request",
+      "http.request.method": "GET",
+      "http.response.status_code": "{401 true}",
+      "http.route": "/v1/models",
+      "localbase.component": "gateway",
+      "localbase.event_id": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e",
+      "localbase.runtime": "gateway",
+      "localbase.schema_version": "{2 true}"
+    },
+    "flags": 1,
+    "severity": "WARN"
+  },
+  "missing span tree": {
+    "attributes": {
+      "error.type": "invalid_api_key",
+      "http.request.method": "GET",
+      "http.response.status_code": "{401 true}",
+      "http.route": "/v1/models",
+      "localbase.auth.outcome": "missing",
+      "localbase.error.code": "invalid_api_key",
+      "localbase.error.type": "invalid_request_error",
+      "localbase.http.response.duration_ms": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e"
+    },
+    "children": [],
+    "flags": 257,
+    "kind": 2,
+    "name": "GET /v1/models",
+    "resource": {
+      "service.name": "local-base",
+      "service.namespace": "localbase"
+    },
+    "scope": "local-base",
+    "status": "0"
+  },
+  "models http.request record": {
+    "attributes": {
+      "auth_outcome": "authenticated",
+      "auth_principal_id": "\u003cvolatile\u003e",
+      "auth_principal_name": "contract",
+      "auth_source": "stored_key",
+      "event.category": "http",
+      "event.name": "http.request",
+      "http.request.method": "GET",
+      "http.response.status_code": "{200 true}",
+      "http.route": "/v1/models",
+      "localbase.component": "gateway",
+      "localbase.event_id": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e",
+      "localbase.runtime": "gateway",
+      "localbase.schema_version": "{2 true}"
+    },
+    "flags": 1,
+    "severity": "INFO"
+  },
+  "models span tree": {
+    "attributes": {
+      "http.request.method": "GET",
+      "http.response.status_code": "{200 true}",
+      "http.route": "/v1/models",
+      "localbase.auth.outcome": "authenticated",
+      "localbase.auth.principal_id": "\u003cvolatile\u003e",
+      "localbase.auth.principal_name": "contract",
+      "localbase.auth.source": "stored_key",
+      "localbase.http.response.duration_ms": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e"
+    },
+    "children": [],
+    "flags": 257,
+    "kind": 2,
+    "name": "GET /v1/models",
+    "resource": {
+      "service.name": "local-base",
+      "service.namespace": "localbase"
+    },
+    "scope": "local-base",
+    "status": "0"
+  },
+  "unmatched http.request record": {
+    "attributes": {
+      "auth_outcome": "authenticated",
+      "auth_principal_id": "\u003cvolatile\u003e",
+      "auth_principal_name": "contract",
+      "auth_source": "stored_key",
+      "error_code": "route_disabled",
+      "event.category": "http",
+      "event.name": "http.request",
+      "http.request.method": "GET",
+      "http.response.status_code": "{404 true}",
+      "http.route": "unmatched-route",
+      "localbase.component": "gateway",
+      "localbase.event_id": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e",
+      "localbase.runtime": "gateway",
+      "localbase.schema_version": "{2 true}",
+      "route_family": "/v1/*",
+      "route_segments": "{3 true}"
+    },
+    "flags": 1,
+    "severity": "WARN"
+  },
+  "unmatched span tree": {
+    "attributes": {
+      "error.type": "route_disabled",
+      "http.request.method": "GET",
+      "http.response.status_code": "{404 true}",
+      "http.route": "unmatched-route",
+      "localbase.auth.outcome": "authenticated",
+      "localbase.auth.principal_id": "\u003cvolatile\u003e",
+      "localbase.auth.principal_name": "contract",
+      "localbase.auth.source": "stored_key",
+      "localbase.error.code": "route_disabled",
+      "localbase.error.type": "invalid_request_error",
+      "localbase.http.response.duration_ms": "\u003cvolatile\u003e",
+      "localbase.request_id": "\u003cvolatile\u003e",
+      "localbase.route.family": "/v1/*",
+      "localbase.route.segments": "{3 true}"
+    },
+    "children": [],
+    "flags": 257,
+    "kind": 2,
+    "name": "GET unmatched-route",
+    "resource": {
+      "service.name": "local-base",
+      "service.namespace": "localbase"
+    },
+    "scope": "local-base",
+    "status": "0"
+  }
+}
