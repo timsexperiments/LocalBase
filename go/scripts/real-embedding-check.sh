@@ -27,7 +27,7 @@
 # input can hold should not change, but memory and batch timing are not the default's. On the real
 # file, 2 slots at 16384 plan 3261 MiB (derived).
 #
-# Adapted from Reliability's tools/real-memory-check.sh.
+# Adapted from Reliability's scripts/real-memory-check.sh.
 # This script deletes nothing. It prints the paths to delete afterwards.
 set -u
 case "${1:-}" in

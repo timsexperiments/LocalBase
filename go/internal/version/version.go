@@ -2,7 +2,7 @@
 // Commit and Date with -ldflags -X (scripts/build.sh); a plain `go build` from a
 // clone reports the commit and time Go stamped from version control. Go does not
 // stamp builds from a git worktree, so those say "unknown" unless built with
-// tools/build.sh.
+// scripts/build.sh.
 package version
 
 import (
