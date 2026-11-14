@@ -1,7 +1,6 @@
 package lease
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +11,8 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
 // Root operations (TS service/ownership.ts): commands that change a root
@@ -131,7 +132,7 @@ func writeSynced(path string, data []byte, o options) error {
 }
 
 func writeJSONAtomic(path string, v any, o options) error {
-	tmp := path + "." + uuid() + ".tmp"
+	tmp := path + "." + uuidv4.New() + ".tmp"
 	defer os.Remove(tmp)
 	b, _ := json.Marshal(v)
 	if err := writeSynced(tmp, b, o); err != nil {
@@ -171,7 +172,7 @@ func nowISO() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z"
 func withMutation(p opPaths, fn func() error) error {
 	deadline := time.Now().Add(p.mutationWait)
 	for time.Now().Before(deadline) {
-		token := uuid()
+		token := uuidv4.New()
 		candidate := p.mutation + "." + token + ".candidate"
 		if err := os.Mkdir(candidate, 0o700); err != nil {
 			return err
@@ -279,7 +280,7 @@ func acquireOperation(canonicalRoot, operation string, opts options) (*Lease, er
 	for time.Now().Before(deadline) {
 		err := os.Mkdir(p.lock, 0o700)
 		if err == nil {
-			owner := operationOwner{Version: 1, OperationID: uuid(), Operation: operation, Root: canonicalRoot,
+			owner := operationOwner{Version: 1, OperationID: uuidv4.New(), Operation: operation, Root: canonicalRoot,
 				RootHash: Hash(canonicalRoot), PID: os.Getpid(), StartedAt: nowISO()}
 			if err := writeJSONAtomic(p.owner, owner, opts); err != nil {
 				os.RemoveAll(p.lock)
@@ -447,7 +448,7 @@ func claimHandoff(p opPaths, canonicalRoot, serviceToken string) (state string, 
 		if o.HandoffToken != serviceToken {
 			return nil
 		}
-		claimed := operationOwner{Version: 1, OperationID: uuid(), Operation: "serve-initialize", Root: canonicalRoot,
+		claimed := operationOwner{Version: 1, OperationID: uuidv4.New(), Operation: "serve-initialize", Root: canonicalRoot,
 			RootHash: Hash(canonicalRoot), PID: os.Getpid(), StartedAt: nowISO()}
 		if err := writeJSONAtomic(p.owner, claimed, options{}); err != nil {
 			return err
@@ -463,16 +464,6 @@ func claimHandoff(p opPaths, canonicalRoot, serviceToken string) (state string, 
 func Hash(dir string) string {
 	sum := sha256.Sum256([]byte(dir))
 	return hex.EncodeToString(sum[:])
-}
-
-// uuid is a copy of root's uuid (internal/root/lock.go), so that this package needn't import root.
-func uuid() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	h := hex.EncodeToString(b)
-	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }
 
 // Held says whether a root's operation lease is held, and by which process for which operation. A

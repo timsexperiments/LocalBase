@@ -1,8 +1,6 @@
 package root
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
 // gatewayOwner is the owner record the TS gateway writes inside its lock
@@ -32,15 +32,6 @@ type gatewayOwner struct {
 
 // Owner is the recorded gateway owner of a root.
 type Owner = gatewayOwner
-
-func uuid() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	h := hex.EncodeToString(b)
-	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
-}
 
 func processAlive(pid int) bool {
 	if pid <= 0 {
@@ -71,9 +62,9 @@ func (r *Root) LockAs(host string, port int, serviceID, serviceToken string) (re
 	ownerPath := filepath.Join(lockDir, "owner.json")
 	for attempt := 0; attempt < 2; attempt++ {
 		if err := os.Mkdir(lockDir, 0o700); err == nil {
-			owner := gatewayOwner{Version: 2, InstanceID: uuid(), Root: r.Dir, RootHash: Hash(r.Dir),
+			owner := gatewayOwner{Version: 2, InstanceID: uuidv4.New(), Root: r.Dir, RootHash: Hash(r.Dir),
 				PID: os.Getpid(), StartedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-				Host: host, Port: port, InstanceToken: uuid(), ServiceID: serviceID, ServiceToken: serviceToken}
+				Host: host, Port: port, InstanceToken: uuidv4.New(), ServiceID: serviceID, ServiceToken: serviceToken}
 			raw, _ := json.Marshal(owner)
 			if err := os.WriteFile(ownerPath, raw, 0o600); err != nil {
 				os.RemoveAll(lockDir)
@@ -168,4 +159,4 @@ func (o *Owner) HealthURL() string {
 }
 
 // NewID returns a random UUID (v4).
-func NewID() string { return uuid() }
+func NewID() string { return uuidv4.New() }

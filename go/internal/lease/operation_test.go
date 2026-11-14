@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
 func TestOperationLease(t *testing.T) {
@@ -56,7 +58,7 @@ func TestOperationLease(t *testing.T) {
 	cmd := exec.Command("true")
 	cmd.Run()
 	os.Mkdir(p.lock, 0o700)
-	writeJSONAtomic(p.owner, operationOwner{Version: 1, OperationID: uuid(), Operation: "dead", Root: rootDir,
+	writeJSONAtomic(p.owner, operationOwner{Version: 1, OperationID: uuidv4.New(), Operation: "dead", Root: rootDir,
 		RootHash: Hash(rootDir), PID: cmd.Process.Pid, StartedAt: nowISO()}, options{})
 	l, err = AcquireOperation(rootDir, "after-crash")
 	if err != nil {
