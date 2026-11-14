@@ -63,6 +63,15 @@ type hooks struct {
 	retryEvery time.Duration
 	// publish marks the steps of publishing, for a test to end the process there; nil marks none.
 	publish func(step string)
+	// deadline bounds an import when the root sets none; 0 is acquire.ImportDeadline.
+	deadline time.Duration
+}
+
+func (h hooks) importDeadline() time.Duration {
+	if h.deadline > 0 {
+		return h.deadline
+	}
+	return acquire.ImportDeadline
 }
 
 func (h hooks) lease(dir, op string, fn func() error) error {
@@ -166,7 +175,7 @@ func (l *Library) ImportLimits(ctx context.Context, plan *acquire.Plan) time.Dur
 	if n, ok := l.Store.SettingInt(ctx, store.ImportDeadlineKey); ok {
 		return time.Duration(n) * time.Hour
 	}
-	return acquire.ImportDeadline
+	return l.hooks.importDeadline()
 }
 
 // StartImport runs an import in the background. The download holds nothing a

@@ -10,9 +10,11 @@ import (
 )
 
 // What one import can cost (DESIGN §31.3).
-var (
-	// ImportDeadline bounds a whole import, however well it progresses. A slow
-	// link can take a day over a very large model.
+
+const (
+	// ImportDeadline bounds a whole import, however well it progresses. A slow link can take a
+	// day over a very large model. A root can set its own (store.ImportDeadlineKey); library's
+	// tests shorten it through its hooks.
 	ImportDeadline = 48 * time.Hour
 	// stagingMaxAge is how long an abandoned download is kept for resuming.
 	stagingMaxAge = 7 * 24 * time.Hour

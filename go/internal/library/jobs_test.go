@@ -243,10 +243,8 @@ func TestImportsAreCapped(t *testing.T) {
 
 // An import that keeps moving but never finishes ends at the deadline, and can resume.
 func TestImportsHaveADeadline(t *testing.T) {
-	old := acquire.ImportDeadline
-	acquire.ImportDeadline = 300 * time.Millisecond
-	defer func() { acquire.ImportDeadline = old }()
 	l := newTestLibrary(t)
+	l.hooks.deadline = 300 * time.Millisecond
 	id, err := l.StartImport(planFor(t, l, slowSource(t).URL, "d1"), "", nil)
 	if err != nil {
 		t.Fatal(err)
