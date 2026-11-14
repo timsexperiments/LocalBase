@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
 // APIKey is an `api_keys` row. The raw key (`lb_` + 32 base64url chars) is
@@ -130,15 +132,8 @@ func (s *Store) CreateAPIKeyExpiring(ctx context.Context, name string, scopes []
 	return k, raw, nil
 }
 
-// UUID returns a random version 4 UUID.
-func UUID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	h := hex.EncodeToString(b)
-	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
-}
+// UUID returns a random version 4 UUID: uuidv4.New.
+func UUID() string { return uuidv4.New() }
 
 // newRawKey is `lb_` + base64url(24 random bytes); the prefix is the first
 // eight characters after `lb_`.

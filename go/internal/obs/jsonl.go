@@ -5,8 +5,6 @@ package obs
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +20,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
 const (
@@ -412,19 +411,10 @@ func severity(l slog.Level) string {
 	return "debug"
 }
 
-func uuid() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	x := hex.EncodeToString(b)
-	return x[0:8] + "-" + x[8:12] + "-" + x[12:16] + "-" + x[16:20] + "-" + x[20:]
-}
-
 func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 	localOnly := false
 	ev := map[string]any{
-		"schemaVersion": 2, "id": uuid(), "timestamp": r.Time.UTC().Format("2006-01-02T15:04:05.000Z"),
+		"schemaVersion": 2, "id": uuidv4.New(), "timestamp": r.Time.UTC().Format("2006-01-02T15:04:05.000Z"),
 		"severity": severity(r.Level), "eventName": "localbase.event", "category": "", "component": "gateway",
 		"runtime": "gateway",
 	}
