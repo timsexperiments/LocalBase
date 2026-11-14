@@ -1459,7 +1459,7 @@ func TestOpenAPIResponses(t *testing.T) {
 
 	// The published feed in force: its notes and recipes. The recipe's model is
 	// selected, so its install is refused and nothing is downloaded.
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "catalog", "feed-v2.json"))
+	raw, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "catalog", "feed-v2.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // What each route is, for the audit log. A new route fails TestEveryRouteIsClassifiedForAudit
@@ -356,7 +357,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 	// Last, because it replaces the catalog the rest of this uses.
 	// A recipe install: its refusal comes back in a 200, and the request is what's recorded.
 	t.Run("install recipe", func(t *testing.T) {
-		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "catalog", "feed-v2.json"))
+		raw, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "catalog", "feed-v2.json"))
 		if err != nil {
 			t.Fatal(err)
 		}

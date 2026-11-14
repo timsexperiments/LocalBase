@@ -12,14 +12,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 const (
 	documentPath = "internal/gateway/openapi.json"
-	pagePath     = "../docs/api-reference.md"
+	pagePath     = "docs/api-reference.md" // from the repository's top
 	regenerate   = "go run ./tools/openapi-docs"
 )
 
@@ -403,9 +406,10 @@ func sortedKeysOf[V any](m map[string]V) []string {
 func main() {
 	check := flag.Bool("check", false, "Say whether the page is current, and change nothing")
 	flag.Parse()
-	raw, err := os.ReadFile(documentPath)
+	var f exitOnFailure
+	raw, err := os.ReadFile(filepath.Join(testutil.ModuleRoot(&f), documentPath))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "openapi-docs: run this from go/:", err)
+		fmt.Fprintln(os.Stderr, "openapi-docs:", err)
 		os.Exit(1)
 	}
 	page, err := render(raw)
@@ -413,16 +417,27 @@ func main() {
 		fmt.Fprintln(os.Stderr, "openapi-docs:", err)
 		os.Exit(1)
 	}
+	pageFile := filepath.Join(testutil.RepoRoot(&f), pagePath)
 	if *check {
-		current, err := os.ReadFile(pagePath)
+		current, err := os.ReadFile(pageFile)
 		if err != nil || !bytes.Equal(current, page) {
 			fmt.Fprintf(os.Stderr, "openapi-docs: %s is not current. Run: %s\n", pagePath, regenerate)
 			os.Exit(1)
 		}
 		return
 	}
-	if err := os.WriteFile(pagePath, page, 0o644); err != nil { //nolint:gosec // G306: a page in the repository, readable like the rest of it.
+	if err := os.WriteFile(pageFile, page, 0o644); err != nil { //nolint:gosec // G306: a page in the repository, readable like the rest of it.
 		fmt.Fprintln(os.Stderr, "openapi-docs:", err)
 		os.Exit(1)
 	}
+}
+
+// exitOnFailure is testutil.Fataler for a command: a failure ends it.
+type exitOnFailure struct{}
+
+func (exitOnFailure) Helper() {}
+
+func (exitOnFailure) Fatalf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "openapi-docs: "+format+"\n", args...)
+	os.Exit(1)
 }

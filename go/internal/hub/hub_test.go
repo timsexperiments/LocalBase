@@ -16,6 +16,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // fixtureHub serves the recorded Hub responses (testdata/hub, keyed by the
@@ -290,7 +291,7 @@ func TestDiscoveryGolden(t *testing.T) {
 	g := loadGolden(t)
 	srv, misses := fixtureHub(t)
 	c := &Client{Root: t.TempDir(), Endpoint: srv.URL}
-	b, err := os.ReadFile("../../../catalog/feed-v2.json")
+	b, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "catalog", "feed-v2.json"))
 	if err != nil {
 		t.Fatalf("the published feed: %v", err)
 	}

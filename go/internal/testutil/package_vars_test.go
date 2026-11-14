@@ -41,7 +41,7 @@ var allowedTestingImporters = map[string]string{
 const modulePath = "github.com/timsexperiments/LocalBase/go"
 
 func TestShippedCodeKeepsNoTestSeamsInPackageState(t *testing.T) {
-	moduleDir := filepath.Join(RepoRoot(t), "go")
+	moduleDir := ModuleRoot(t)
 	shipped := shippedPackages(t, moduleDir)
 	if len(shipped) < 40 { // a guard that reads nothing checks nothing
 		t.Fatalf("only %d shipped packages found", len(shipped))
