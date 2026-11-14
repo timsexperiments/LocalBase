@@ -9,11 +9,18 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/install"
 )
 
-// What one import can cost (DESIGN §31.3). These are variables for tests.
+// What one import can cost (DESIGN §31.3).
 var (
 	// ImportDeadline bounds a whole import, however well it progresses. A slow
 	// link can take a day over a very large model.
 	ImportDeadline = 48 * time.Hour
+	// stagingMaxAge is how long an abandoned download is kept for resuming.
+	stagingMaxAge = 7 * 24 * time.Hour
+)
+
+// The limits tests make smaller go through the plan (MaxUnknownBytes, checkEvery, available) or
+// the request (maxFiles), never through package state.
+const (
 	// maxUnknownSizeBytes bounds a file whose source does not say how big it is.
 	maxUnknownSizeBytes int64 = 256 << 30
 	// freeSpaceReserve stays free on the volume, so a download cannot stop the
@@ -23,11 +30,16 @@ var (
 	freeSpaceEvery int64 = 64 << 20
 	// maxPlanFiles bounds the files one import can fetch.
 	maxPlanFiles = 1024
-	// stagingMaxAge is how long an abandoned download is kept for resuming.
-	stagingMaxAge = 7 * 24 * time.Hour
-	// availableBytes is the space an unprivileged user can use at a path.
-	availableBytes = install.FreeBytes
 )
+
+// freeBytes is the space an unprivileged user can use at a path: install.FreeBytes, unless a
+// test's plan says otherwise.
+func (p *Plan) freeBytes(dir string) (int64, error) {
+	if p.available != nil {
+		return p.available(dir)
+	}
+	return install.FreeBytes(dir)
+}
 
 // Stable codes for what limits an import.
 const (
@@ -48,7 +60,7 @@ func noSpace(need, usable int64) error {
 // sizes are and what is already staged. A size is a claim, so a running download
 // looks again as it goes.
 func CheckSpace(rootDir string, p *Plan) error {
-	free, err := availableBytes(filepath.Join(rootDir, "models"))
+	free, err := p.freeBytes(filepath.Join(rootDir, "models"))
 	if err != nil {
 		return nil // no way to tell here; a running download looks again
 	}
@@ -79,10 +91,12 @@ type budget struct {
 	limit     int64
 	onHost    bool
 	nextCheck int64
+	every     int64                           // how often it looks at the free space
+	available func(dir string) (int64, error) // how it does
 }
 
 func newBudget(dir string, expected int64) *budget {
-	return &budget{dir: dir, unknown: expected <= 0, limit: maxUnknownSizeBytes}
+	return &budget{dir: dir, unknown: expected <= 0, limit: maxUnknownSizeBytes, every: freeSpaceEvery, available: install.FreeBytes}
 }
 
 // budget is a plan's own limits, for one of its files.
@@ -92,6 +106,12 @@ func (p *Plan) budget(dir string, expected int64) *budget {
 		b.limit = p.MaxUnknownBytes
 	}
 	b.onHost = p.onHost
+	if p.checkEvery > 0 {
+		b.every = p.checkEvery
+	}
+	if p.available != nil {
+		b.available = p.available
+	}
 	return b
 }
 
@@ -112,8 +132,8 @@ func (b *budget) check(done int64) error {
 	if done < b.nextCheck {
 		return nil
 	}
-	b.nextCheck = done + freeSpaceEvery
-	if free, err := availableBytes(b.dir); err == nil && free < freeSpaceReserve {
+	b.nextCheck = done + b.every
+	if free, err := b.available(b.dir); err == nil && free < freeSpaceReserve {
 		return noSpace(done, free-freeSpaceReserve+done)
 	}
 	return nil

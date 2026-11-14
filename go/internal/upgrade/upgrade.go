@@ -46,9 +46,9 @@ const (
 	checkTimeout      = 10 * time.Second
 )
 
-// maxBinaryBytes bounds what is taken out of an archive. A variable so a test need not build
-// half a gigabyte to reach it.
-var maxBinaryBytes int64 = 512 << 20
+// maxBinaryBytes bounds what is taken out of an archive. PrepareOptions.maxBinary stands in for
+// it, so a test need not build half a gigabyte to reach it.
+const maxBinaryBytes int64 = 512 << 20
 
 // --- the keys --------------------------------------------------------------------------
 
@@ -403,6 +403,15 @@ type PrepareOptions struct {
 	Keys                   []Key
 	// Run runs a file with --version and returns what it says.
 	Run func(path string) (string, error)
+	// maxBinary bounds what is taken out of an archive; 0 is maxBinaryBytes (tests).
+	maxBinary int64
+}
+
+func (o PrepareOptions) binaryLimit() int64 {
+	if o.maxBinary > 0 {
+		return o.maxBinary
+	}
+	return maxBinaryBytes
 }
 
 // RunVersion runs a file with --version, and returns what it says.
@@ -479,9 +488,9 @@ func Prepare(ctx context.Context, s Source, o PrepareOptions) (*Candidate, error
 		}
 		out := filepath.Join(dir, "local-base.new")
 		if strings.HasSuffix(archive, ".zip") {
-			err = extractZip(archivePath, binary, out)
+			err = extractZip(archivePath, binary, out, o.binaryLimit())
 		} else {
-			err = extractTarGz(archivePath, binary, out)
+			err = extractTarGz(archivePath, binary, out, o.binaryLimit())
 		}
 		if err != nil {
 			return nil, err
@@ -531,25 +540,25 @@ func archiveName(name string) string {
 	return clean
 }
 
-func writeBinary(out string, r io.Reader) error {
+func writeBinary(out string, r io.Reader, limit int64) error {
 	f, err := os.OpenFile(out, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755) //nolint:gosec // G302: this is the program, the same mode install.sh gives it.
 	if err != nil {
 		return err
 	}
-	n, err := io.Copy(f, io.LimitReader(r, maxBinaryBytes+1))
+	n, err := io.Copy(f, io.LimitReader(r, limit+1))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
 		return err
 	}
-	if n > maxBinaryBytes {
+	if n > limit {
 		return errors.New("the binary is over the size limit")
 	}
 	return os.Chmod(out, 0o755) //nolint:gosec // G302: this is the program, the same mode install.sh gives it.
 }
 
-func extractTarGz(archive, name, out string) error {
+func extractTarGz(archive, name, out string, limit int64) error {
 	f, err := os.Open(archive)
 	if err != nil {
 		return err
@@ -575,11 +584,11 @@ func extractTarGz(archive, name, out string) error {
 		if h.Typeflag != tar.TypeReg {
 			return fmt.Errorf("%s in the archive is not a regular file", name)
 		}
-		return writeBinary(out, tr)
+		return writeBinary(out, tr, limit)
 	}
 }
 
-func extractZip(archive, name, out string) error {
+func extractZip(archive, name, out string, limit int64) error {
 	zr, err := zip.OpenReader(archive)
 	if err != nil {
 		return fmt.Errorf("the archive could not be read: %w", err)
@@ -597,7 +606,7 @@ func extractZip(archive, name, out string) error {
 			return err
 		}
 		defer r.Close()
-		return writeBinary(out, r)
+		return writeBinary(out, r, limit)
 	}
 	return fmt.Errorf("the archive does not hold %s", name)
 }

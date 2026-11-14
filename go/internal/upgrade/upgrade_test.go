@@ -316,8 +316,6 @@ func TestPrepareRefuses(t *testing.T) {
 }
 
 func TestPrepareRefusesAnOversizedBinary(t *testing.T) {
-	defer func(old int64) { maxBinaryBytes = old }(maxBinaryBytes)
-	maxBinaryBytes = 1024
 	k := newKey(t, "k1")
 	archive := AssetArchive("linux", "amd64")
 	body := targz(t, AssetBinary("linux", "amd64"), bytes.Repeat([]byte("x"), 2048))
@@ -326,7 +324,7 @@ func TestPrepareRefusesAnOversizedBinary(t *testing.T) {
 	srv, _ := serve(t, "v1.2.3", &release{map[string][]byte{archive: body, "checksums.txt": checks, "checksums.txt.sig": []byte(k.sign(checks))}})
 	dir := t.TempDir()
 	_, err := Prepare(context.Background(), Source{Files: srv.URL, Client: srv.Client()},
-		PrepareOptions{Tag: "v1.2.3", GOOS: "linux", GOARCH: "amd64", Dir: dir, Keys: []Key{k.listed()}, Run: runScript})
+		PrepareOptions{Tag: "v1.2.3", GOOS: "linux", GOARCH: "amd64", Dir: dir, Keys: []Key{k.listed()}, Run: runScript, maxBinary: 1024})
 	if err == nil || !strings.Contains(err.Error(), "limit") {
 		t.Fatalf("%v", err)
 	}
