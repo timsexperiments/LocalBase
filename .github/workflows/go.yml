@@ -57,8 +57,10 @@ jobs:
           else
             echo go=true >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # The paths the old filter named, plus this workflow's setup action.
-          if printf '%s\n' "$files" | grep -qE '^(go/|drizzle/|src/catalog/models/|src/manager/managed-runtime-manifest\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
+          # The Go tree and what it reads, this workflow and its setup action, and what bun-scripts
+          # tests: the release and notice scripts, the Kokoro runtime, src/ (which they still import
+          # until it goes) and the Bun manifest.
+          if printf '%s\n' "$files" | grep -qE '^(go/|drizzle/|src/|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
             echo go=true >> "$GITHUB_OUTPUT"
           else
             echo go=false >> "$GITHUB_OUTPUT"
@@ -213,7 +215,7 @@ jobs:
 
   jstest:
     # The page scripts' unit tests (go/tools/jstest), which no Go job ran: a module-load error in
-    # one passed every PR. Bun as ci.yml sets it up, at the same pin and version.
+    # one passed every PR. Bun at the pin and version the runtime release workflows use.
     needs: scope
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
@@ -231,6 +233,30 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Page script unit tests
         run: bun test go/tools/jstest
+
+  bun-scripts:
+    # The Bun scripts' tests and typecheck, which ci.yml ran until it went with the TypeScript
+    # release: the runtime release scripts (scripts/runtimes), the Bun notice helpers and the Kokoro
+    # runtime's packaging. The release workflows run them too, but only when a release is cut.
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Script tests
+        run: bun test scripts
+      - name: Typecheck
+        run: bun run typecheck
 
   # macOS costs the most: it runs after merge, or on a pull request labelled "macos". It has fewer
   # jobs than Linux, since only five macOS jobs run at once.
@@ -340,7 +366,7 @@ jobs:
 
   go-checks:
     # The one check to require: it passes only when every job above that should have run passed.
-    needs: [scope, unit, backup-race, backup-files, contract, small, jstest, macos-unit, macos-backup-race, macos-contract]
+    needs: [scope, unit, backup-race, backup-files, contract, small, jstest, bun-scripts, macos-unit, macos-backup-race, macos-contract]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -361,7 +387,7 @@ jobs:
           go=$(jq -r '.scope.outputs.go' <<<"$NEEDS")
           if [ "$go" != true ]; then echo "nothing of the Go tree changed"; exit 0; fi
           if [ "$EVENT" = pull_request ] && [ "$DRAFT" = true ]; then echo "draft: the tests run once it is ready"; exit 0; fi
-          must="unit backup-race backup-files contract small jstest"
+          must="unit backup-race backup-files contract small jstest bun-scripts"
           if [ "$EVENT" != pull_request ] || [ "$MACOS_LABEL" = true ]; then must="$must macos-unit macos-backup-race macos-contract"; fi
           for j in $must; do
             [ "$(result "$j")" = success ] || { echo "$j should have run and passed, but is $(result "$j")"; exit 1; }
