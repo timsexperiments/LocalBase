@@ -30,7 +30,7 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := diagnostics.Collect(context.Background(), dir, service.NewManager())
+	b := diagnostics.Collect(context.Background(), dir, service.NewManager(), hostFor(c))
 	if b.DatabaseErr != nil {
 		c.Error("Could not read this root's database: %s", termsafe.Printable(b.DatabaseErr.Error()))
 	}
