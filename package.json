@@ -18,15 +18,15 @@
     "catalog:feed": "go run ./tools/catalog-feed"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2",
-    "@types/tar-stream": "^3.1.4",
-    "@typescript/native-preview": "^7.0.0-dev.20260620.1",
-    "prettier": "3.9.6"
+    "@types/bun": "1.4.4",
+    "@types/tar-stream": "^3.1.5",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "prettier": "3.10.1"
   },
   "dependencies": {
     "citty": "0.2.2",
     "fflate": "^0.8.3",
-    "tar-stream": "^3.2.0",
-    "zod": "^4.4.3"
+    "tar-stream": "^3.2.2",
+    "zod": "^4.6.7"
   }
 }
