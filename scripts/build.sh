@@ -40,7 +40,11 @@ case "${1:-}" in
   --env) echo "$env"; exit 0 ;;
 esac
 
-out=$(cd "$(dirname "${1:-local-base}")" && pwd)/$(basename "${1:-local-base}")
+# The output's directory is made if it's missing (a fresh clone has no dist/), and an output
+# whose directory can't be reached stops the build rather than landing in /.
+mkdir -p "$(dirname "${1:-local-base}")"
+outdir=$(cd "$(dirname "${1:-local-base}")" && pwd) || { echo "build.sh: can't reach $(dirname "${1:-local-base}")" >&2; exit 1; }
+out=$outdir/$(basename "${1:-local-base}")
 flags=$(ldflags)
 cd "$here"
 # shellcheck disable=SC2086 # goflags is a list of separate flags.
