@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness"
 )
 
 // TestVideoRejections sends video requests that never start a

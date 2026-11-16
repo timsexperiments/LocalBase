@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/models"
 )
 
 // Ratings, best first.

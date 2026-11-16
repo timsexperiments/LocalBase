@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // readCopyFixture makes a root and a copy of its database in the cache folder. held keeps a lock on it,

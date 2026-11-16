@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 type feedGolden struct {

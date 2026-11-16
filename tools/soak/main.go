@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/lab"
+	"github.com/timsexperiments/LocalBase/test/lab"
 )
 
 type options struct {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // Stamp identifies the stored custom voice set; the warm speech server

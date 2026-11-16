@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/internal/localhttp"
 )
 
 // The decisions an upgrade makes, apart from the binary steps (Prepare, Apply, Rollback): whether

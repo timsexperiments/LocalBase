@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // Changing a model's placement or unloading it takes models:manage and nothing else. Reading its

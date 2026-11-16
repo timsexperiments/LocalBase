@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
-	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/uuidv4"
 )
 
 const (

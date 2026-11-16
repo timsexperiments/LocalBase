@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // The page says what a person can do. Nothing checks configuration:read or configuration:manage, so

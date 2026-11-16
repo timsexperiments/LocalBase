@@ -17,7 +17,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // Auth profiles are LocalBase's private credential storage for download

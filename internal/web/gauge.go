@@ -4,14 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 	"hash/fnv"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // gaugeSegmentCount is how many equal segments the memory gauge has.

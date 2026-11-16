@@ -20,8 +20,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/third_party/norm"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/third_party/norm"
 )
 
 const (

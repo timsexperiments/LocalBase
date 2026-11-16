@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // Pressure-driven runtime stops (TS MemoryPressureMonitor with serve's

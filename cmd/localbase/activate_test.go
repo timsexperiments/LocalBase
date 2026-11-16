@@ -6,10 +6,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/conf"
-	"github.com/timsexperiments/LocalBase/go/internal/install"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/conf"
+	"github.com/timsexperiments/LocalBase/internal/install"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 type heldConfig struct {

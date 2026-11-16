@@ -9,8 +9,8 @@ import (
 	goruntime "runtime"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // linkCrispASR prepares Kokoro through CrispASR in a scratch root from

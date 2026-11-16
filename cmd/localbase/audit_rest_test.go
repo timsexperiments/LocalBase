@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"github.com/timsexperiments/LocalBase/go/internal/audit"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/audit"
+	"github.com/timsexperiments/LocalBase/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/placement/placementtest"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // changedConfig is this root's configuration as a file to apply, with one setting changed.

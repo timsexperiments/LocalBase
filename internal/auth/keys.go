@@ -3,7 +3,7 @@ package auth
 import (
 	"slices"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // PublicKey is an API key's metadata as the command line and the gateway show it, never its hash.

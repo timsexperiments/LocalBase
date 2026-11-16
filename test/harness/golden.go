@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // Goldens: a test that used to compare Go with TS, and checked nothing else, pins Go's results

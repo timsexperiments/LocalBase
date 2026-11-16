@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
+	"github.com/timsexperiments/LocalBase/internal/structuredoutput"
 )
 
 // FuzzStructuredOutput feeds arbitrary schemas and answers to what a chat key can reach. Plain

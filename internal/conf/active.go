@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // RunningConfig is the configuration a running gateway uses. It can differ from the saved one, by

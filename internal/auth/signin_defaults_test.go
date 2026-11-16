@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // signIn runs the real sign-in flow for an identity the fake provider vouches for.

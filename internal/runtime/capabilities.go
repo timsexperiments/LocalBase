@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // Capability detection and resolution, ported from capability-detection.ts.

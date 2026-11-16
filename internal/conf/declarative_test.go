@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // TestDeclarativeGolden replays tools/golden/config.ts: every document's

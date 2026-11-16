@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 const lockProbeEnv = "LOCALBASE_TEST_LOCK_PROBE"

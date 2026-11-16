@@ -21,7 +21,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
 )
 
 //go:embed data

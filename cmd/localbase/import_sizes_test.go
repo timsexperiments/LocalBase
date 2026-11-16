@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
+	"github.com/timsexperiments/LocalBase/internal/placement/placementtest"
 )
 
 // `models import` prints a file's size and the total with memory.BytesText, as backup does: GiB to

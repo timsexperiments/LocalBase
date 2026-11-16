@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-const module = "github.com/timsexperiments/LocalBase/go/"
+const module = "github.com/timsexperiments/LocalBase/"
 
 type block struct{ stmts, hits int }
 

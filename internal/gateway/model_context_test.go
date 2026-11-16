@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // connect asks the running gateway for a model's context: the figure /v1/models gives, to the

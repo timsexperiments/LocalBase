@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // The runs tests run against a stub (runs/harness_test.go). These, with runs_test.go's tests that

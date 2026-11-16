@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // Idle-eviction recovery (TS admitModelWithIdleRecovery with the

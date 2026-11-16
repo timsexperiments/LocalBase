@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // --- status ------------------------------------------------------------------------------

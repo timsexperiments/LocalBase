@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // One-time local sign-in (DESIGN §28). Whoever can run the CLI on this root

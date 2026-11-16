@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // The one built-in model with a variant other than "default", chosen by hand so its files are missing.

@@ -4,15 +4,15 @@ import (
 	"time"
 
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/placement"
+	"github.com/timsexperiments/LocalBase/internal/placement"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 const (

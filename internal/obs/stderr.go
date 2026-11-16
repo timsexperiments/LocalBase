@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
-	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/uuidv4"
 )
 
 // The managed macOS gateway's stderr goes to one private, size-bounded file

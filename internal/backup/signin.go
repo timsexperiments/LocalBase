@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // How a line compares with the root being replaced. Empty means it's the same, or there's nothing to

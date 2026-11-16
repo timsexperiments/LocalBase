@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/backup"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/backup"
+	"github.com/timsexperiments/LocalBase/internal/cli"
 )
 
 // A real backup and the real command: settings changed with their own commands show in the report by

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // The policy rules both callers apply (see access_plans.go for the shape). Applying, clearing,

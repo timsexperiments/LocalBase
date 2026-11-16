@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // A test binary is refused the default root before any command runs: the safety net that keeps a

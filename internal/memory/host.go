@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/timsexperiments/LocalBase/go/internal/childenv"
+	"github.com/timsexperiments/LocalBase/internal/childenv"
 )
 
 // Topology describes the memory pools admission reasons about. The skeleton

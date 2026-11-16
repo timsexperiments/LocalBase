@@ -3,7 +3,7 @@ package audit
 import (
 	"encoding/json"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/obs"
 )
 
 // UnendedSessions counts sign-outs whose delete failed since everything was last ended:

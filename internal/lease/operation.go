@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/syncfile"
-	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
+	"github.com/timsexperiments/LocalBase/internal/syncfile"
+	"github.com/timsexperiments/LocalBase/internal/uuidv4"
 )
 
 // Root operations (TS service/ownership.ts): commands that change a root

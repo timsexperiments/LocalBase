@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/conf"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/conf"
 )
 
 // The catalog's note and the eligibility check follow each model's targets. A model that can run

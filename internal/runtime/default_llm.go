@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // The fit-aware default chat model (Go only, DESIGN §18). With an ordered

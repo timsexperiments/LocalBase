@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // Only a built-in model of the asked kind passes, and what doesn't comes back in the order given.

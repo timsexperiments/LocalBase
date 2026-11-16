@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/models"
 )
 
 // importedTask is an imported model's LLM task, or "" when id isn't an imported LLM. It reads that

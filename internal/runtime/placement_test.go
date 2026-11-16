@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/placement"
-	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/placement"
+	"github.com/timsexperiments/LocalBase/internal/placement/placementtest"
 )
 
 // stubPlacement is a discrete GPU with settable free memory.

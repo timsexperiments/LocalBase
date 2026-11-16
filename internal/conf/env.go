@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // ApplyEnv applies LOCALBASE_HOST, LOCALBASE_PORT, LOCALBASE_STT_HOST, LOCALBASE_STT_PORT and

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // A --no-auth gateway binds loopback (cmd/localbase), but that alone does not

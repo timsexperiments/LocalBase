@@ -3,7 +3,7 @@ package audit
 import (
 	"context"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // TemporaryKey creates a key a command uses for a while: named, with scopes, expiring in a day, its

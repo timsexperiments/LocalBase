@@ -10,9 +10,9 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/timsexperiments/LocalBase/go/internal/backup"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/backup"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
 )
 
 const plantedTail = "\x1b[2K\nsecond-line\u202e\u009b\u0430"

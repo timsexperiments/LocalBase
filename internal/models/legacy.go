@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // FromSpec reads a catalog entry (the TS modelSpecObjectSchema) as a logical

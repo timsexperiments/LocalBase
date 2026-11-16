@@ -38,7 +38,7 @@ var allowedTestingImporters = map[string]string{
 	"internal/service": "testing.Testing keeps a test binary off the installed service (refuseDefaultRootInTest)",
 }
 
-const modulePath = "github.com/timsexperiments/LocalBase/go"
+const modulePath = "github.com/timsexperiments/LocalBase"
 
 func TestShippedCodeKeepsNoTestSeamsInPackageState(t *testing.T) {
 	moduleDir := ModuleRoot(t)

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/usage"
 )
 
 // The daily check, in Settings (DESIGN §33.1). It is read and changed through /_localbase/update as

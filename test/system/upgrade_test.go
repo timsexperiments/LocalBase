@@ -24,13 +24,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 const (
-	modulePath = "github.com/timsexperiments/LocalBase/go/internal"
+	modulePath = "github.com/timsexperiments/LocalBase/internal"
 	testKeyID  = "contract-test"
 )
 
@@ -108,7 +108,7 @@ func (k *upgradeKit) compile(t *testing.T, name string, args []string, ldflags s
 		return p.(string)
 	}
 	out := filepath.Join(k.dir, name)
-	cmdArgs := append(append([]string{"build"}, args...), "-ldflags", ldflags, "-o", out, "github.com/timsexperiments/LocalBase/go/cmd/localbase")
+	cmdArgs := append(append([]string{"build"}, args...), "-ldflags", ldflags, "-o", out, "github.com/timsexperiments/LocalBase/cmd/localbase")
 	cmd := exec.Command("go", cmdArgs...)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if b, err := cmd.CombinedOutput(); err != nil {

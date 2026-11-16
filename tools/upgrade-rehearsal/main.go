@@ -35,16 +35,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/service"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
 )
 
 const (
 	defaultWork = "/private/tmp/lb-upgrade-rehearsal"
 	markerName  = ".lb-upgrade-rehearsal"
-	modulePath  = "github.com/timsexperiments/LocalBase/go/internal"
+	modulePath  = "github.com/timsexperiments/LocalBase/internal"
 	keyID       = "rehearsal"
 	modelID     = "rehearsal-tiny"
 	backendID   = "rehearsal-fake"

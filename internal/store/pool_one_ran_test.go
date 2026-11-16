@@ -10,7 +10,7 @@ import (
 
 // event is one line of a `go test -json` stream, in its real shape.
 func event(action, pkg, test string) string {
-	line := `{"Time":"2026-11-11T05:10:09Z","Action":"` + action + `","Package":"github.com/timsexperiments/LocalBase/go/` + pkg + `"`
+	line := `{"Time":"2026-11-11T05:10:09Z","Action":"` + action + `","Package":"github.com/timsexperiments/LocalBase/` + pkg + `"`
 	if test != "" {
 		line += `,"Test":"` + test + `"`
 	}
@@ -24,7 +24,7 @@ func stream(lines ...string) []byte { return []byte(strings.Join(lines, "\n") + 
 func TestNotRunSaysWhatARunLeftOut(t *testing.T) {
 	ranNothing := stream(
 		event("start", "contract", ""),
-		`{"Action":"output","Package":"github.com/timsexperiments/LocalBase/go/contract","Output":"testing: warning: no tests to run\n"}`,
+		`{"Action":"output","Package":"github.com/timsexperiments/LocalBase/contract","Output":"testing: warning: no tests to run\n"}`,
 		event("pass", "contract", ""))
 	ranOne := stream(
 		event("start", "test/system", ""),
@@ -71,12 +71,12 @@ func TestNotRunSaysWhatARunLeftOut(t *testing.T) {
 // A failure is shown as go test prints it, not as JSON.
 func TestPlainOutputIsWhatGoTestPrints(t *testing.T) {
 	got := plainOutput(stream(
-		"# github.com/timsexperiments/LocalBase/go/contract",
+		"# github.com/timsexperiments/LocalBase/contract",
 		event("start", "contract", ""),
 		`{"Action":"output","Package":"p","Output":"panic: test timed out after 4m0s\n"}`,
 		`{"Action":"output","Package":"p","Output":"FAIL\tp\t240.1s\n"}`,
 		event("fail", "contract", "")))
-	if want := "# github.com/timsexperiments/LocalBase/go/contract\npanic: test timed out after 4m0s\nFAIL\tp\t240.1s\n"; got != want {
+	if want := "# github.com/timsexperiments/LocalBase/contract\npanic: test timed out after 4m0s\nFAIL\tp\t240.1s\n"; got != want {
 		t.Errorf("plainOutput = %q, want %q", got, want)
 	}
 }

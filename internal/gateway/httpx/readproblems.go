@@ -1,6 +1,6 @@
 package httpx
 
-import "github.com/timsexperiments/LocalBase/go/internal/store"
+import "github.com/timsexperiments/LocalBase/internal/store"
 
 // ReadProblemsJSON is what our own routes say about them.
 func ReadProblemsJSON(problems []*store.ReadError) []map[string]string {

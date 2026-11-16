@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // An email address proves nothing by itself: what counts is who vouches for it. Email and

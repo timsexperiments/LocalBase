@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 var noon = time.Date(2026, 11, 2, 12, 30, 0, 0, time.UTC)

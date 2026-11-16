@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
+	"github.com/timsexperiments/LocalBase/internal/gateway/runs"
 )
 
 // allowedUIRoute lists what the browser may call through /app/api: the route table's ui methods

@@ -3,7 +3,7 @@ package meta
 import (
 	"encoding/json"
 
-	"github.com/timsexperiments/LocalBase/go/internal/collate"
+	"github.com/timsexperiments/LocalBase/internal/collate"
 )
 
 func jsonUnmarshal(b []byte, v any) { _ = json.Unmarshal(b, v) }

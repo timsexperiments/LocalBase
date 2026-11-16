@@ -3,7 +3,7 @@ package memory
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
 )
 
 // Every rung of doctor's verdict, word for word as doctor printed it before it moved here, and none of

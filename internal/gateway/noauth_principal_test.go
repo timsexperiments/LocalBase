@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // Under --no-auth both principals hold every permission: the gateway's, for an API caller with no

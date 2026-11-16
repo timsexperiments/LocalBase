@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/cli"
 )
 
 // serve's output is what it was: under --json, a started line (with the first-run link when there is

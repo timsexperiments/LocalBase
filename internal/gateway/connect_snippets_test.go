@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/connect"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/connect"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // waitForChat waits for the backend to answer before a snippet runs. A snippet's request would

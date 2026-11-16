@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/cli"
 )
 
 // A live PID in owner.json isn't proof that the gateway it names is answering at that address: the

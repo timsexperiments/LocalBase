@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/lab"
+	"github.com/timsexperiments/LocalBase/test/lab"
 )
 
 // TestRuntimesStopBeforeGatewayStopped runs a real gateway with a backend up for

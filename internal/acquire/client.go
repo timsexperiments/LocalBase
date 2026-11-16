@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/netguard"
+	"github.com/timsexperiments/LocalBase/internal/netguard"
 )
 
 // HFEndpoint is the Hugging Face base URL (HF_ENDPOINT overrides it).

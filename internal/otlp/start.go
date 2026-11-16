@@ -6,9 +6,9 @@ import (
 	"os"
 	"sort"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/version"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/version"
 )
 
 // Start starts OTLP export when OTEL_* or the saved settings (endpoint, headers, samplePercent)

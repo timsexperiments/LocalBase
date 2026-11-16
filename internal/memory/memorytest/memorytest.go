@@ -5,7 +5,7 @@ package memorytest
 import (
 	"context"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // Unsampled is a host whose processes are never measured (memory.FootprintSampler), as a Controller

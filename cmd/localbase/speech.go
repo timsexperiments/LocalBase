@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // speechCommand holds speech settings. `speech marking` is the single switch

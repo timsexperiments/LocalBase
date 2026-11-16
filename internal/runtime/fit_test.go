@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // TestCatalogMemoryMatchesTypeScript compares every built-in model's

@@ -13,16 +13,16 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
-	"github.com/timsexperiments/LocalBase/go/internal/video"
-	"github.com/timsexperiments/LocalBase/go/internal/voices"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/usage"
+	"github.com/timsexperiments/LocalBase/internal/video"
+	"github.com/timsexperiments/LocalBase/internal/voices"
 )
 
 // GET /_localbase/host and GET /_localbase/models/{id}/admission (DESIGN §26): what

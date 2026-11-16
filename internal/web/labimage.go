@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // The Image studio (DESIGN §22.16). A batch is N runs with consecutive seeds,

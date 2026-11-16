@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // configure saves the configuration and its settings in one transaction: when a setting can't be

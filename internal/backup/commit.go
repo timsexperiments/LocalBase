@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // liveFacts is everything about the root being replaced that a report tells someone. They say yes to

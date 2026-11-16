@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/cli"
 )
 
 // keyRecorder records each request's route and the key headers it carried.

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // Former built-in entries (TS src/catalog/former, #368): models earlier

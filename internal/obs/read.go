@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // Filters select events (logs.ts matchesLogFilters).

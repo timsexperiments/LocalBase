@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/usage"
 )
 
 // The optional daily check for a newer version (DESIGN §33.1). Reading says what is stored and

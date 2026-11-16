@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
 )
 
 // Lines is text whose line breaks are real, for a document this program encoded itself, like JSON or

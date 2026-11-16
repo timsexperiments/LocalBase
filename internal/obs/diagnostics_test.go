@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
 )
 
 // TestEventsGolden replays tools/golden/logs.ts: the reader keeps exactly

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
-	"github.com/timsexperiments/LocalBase/go/internal/version"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/version"
 )
 
 // versionCommand says exactly which build this is. Bare --version stays the

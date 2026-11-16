@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
 )
 
 // route is one path the gateway serves. The table is the one list: it builds the mux, the list

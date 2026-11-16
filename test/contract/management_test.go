@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness"
 )
 
 // TestModelManagement runs /_localbase/model-management: the catalog state, every

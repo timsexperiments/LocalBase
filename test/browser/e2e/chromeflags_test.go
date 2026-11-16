@@ -8,7 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/timsexperiments/LocalBase/go/test/guards/treewalk"
+	"github.com/timsexperiments/LocalBase/test/guards/treewalk"
 )
 
 // A launch gives the port a value. A script that only looks for the flag in ps output doesn't.

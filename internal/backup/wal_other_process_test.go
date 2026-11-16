@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // A connection in this process can't show what a restore meets from another one, because SQLite shares its

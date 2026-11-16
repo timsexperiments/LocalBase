@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
 )
 
 // upgradeImpostor is a root whose owner.json names a live PID (this test's), a service, and an

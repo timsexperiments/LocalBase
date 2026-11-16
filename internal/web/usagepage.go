@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
+	"github.com/timsexperiments/LocalBase/internal/usage"
 )
 
 // Usage and activity (DESIGN §32.8): hourly totals, read and changed through

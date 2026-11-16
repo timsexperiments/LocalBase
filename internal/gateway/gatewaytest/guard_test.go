@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const importPath = "github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+const importPath = "github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 
 // This package is for tests: no code built into a binary imports it, whatever its build tags.
 func TestOnlyTestsImportThis(t *testing.T) {

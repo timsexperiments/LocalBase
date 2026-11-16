@@ -14,7 +14,7 @@ import (
 // use backup; Run's package holds none of it, so here the check is the whole import graph, for the
 // default and the localbase_lab builds.
 func TestRunNeverReachesInternalBackup(t *testing.T) {
-	const module = "github.com/timsexperiments/LocalBase/go/internal/"
+	const module = "github.com/timsexperiments/LocalBase/internal/"
 	for _, tags := range [][]string{nil, {"-tags", "localbase_lab"}} {
 		args := append(append([]string{"list", "-deps"}, tags...), ".")
 		out, err := exec.Command("go", args...).CombinedOutput()

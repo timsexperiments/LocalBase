@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // The fit uses the peaks the store has seen for the model's file; with no store it is the catalog's;

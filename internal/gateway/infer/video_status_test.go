@@ -3,7 +3,7 @@ package infer
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/video"
+	"github.com/timsexperiments/LocalBase/internal/video"
 )
 
 // A finished job counts in usage under the status of how it ended. TestUsageVideoJobCountsOnce

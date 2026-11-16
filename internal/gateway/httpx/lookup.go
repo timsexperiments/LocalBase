@@ -3,7 +3,7 @@ package httpx
 import (
 	"net/http"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // CredentialLookupFailed answers for a request whose credential couldn't be looked up.

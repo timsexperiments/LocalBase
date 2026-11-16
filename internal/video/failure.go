@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // FreeMemoryHint is what to do when a video can't start for lack of memory.

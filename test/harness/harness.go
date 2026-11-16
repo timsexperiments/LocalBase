@@ -28,12 +28,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 var (
@@ -516,9 +516,9 @@ func WatchGateway(pid int) {
 func GoBuildArgs(out string) []string {
 	args := []string{"build", "-o", out}
 	if os.Getenv("LOCALBASE_CONTRACT_COVERDIR") != "" {
-		args = append(args, "-cover", "-coverpkg=github.com/timsexperiments/LocalBase/go/...")
+		args = append(args, "-cover", "-coverpkg=github.com/timsexperiments/LocalBase/...")
 	}
-	return append(args, "github.com/timsexperiments/LocalBase/go/cmd/localbase")
+	return append(args, "github.com/timsexperiments/LocalBase/cmd/localbase")
 }
 
 // CoverEnv is what a covered binary needs to write its coverage.

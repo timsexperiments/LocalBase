@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // sayIfInstalled says what's about to happen when it's the installed service, the one on the default

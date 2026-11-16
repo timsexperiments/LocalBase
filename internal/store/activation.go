@@ -8,7 +8,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
 )
 
 // Declarative configuration's pending-restart record (TS activation.ts).

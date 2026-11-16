@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 var localLinkRe = regexp.MustCompile(`http://127\.0\.0\.1:\d+/app/login/once#[A-Za-z0-9_-]{43}`)

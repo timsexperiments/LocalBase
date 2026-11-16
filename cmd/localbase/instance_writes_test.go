@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/cli"
 )
 
 // writeSitesEnv is a configured root, open, whose owner record names a gateway served by handler,

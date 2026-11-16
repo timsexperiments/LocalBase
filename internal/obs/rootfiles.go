@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // CheckRootFiles finds what would stop the gateway: an unsafe log, stderr capture or

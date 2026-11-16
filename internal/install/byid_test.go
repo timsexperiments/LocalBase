@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // ByID refuses an unknown id and an ineligible model in their own words, before anything is

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/timsexperiments/LocalBase/go/internal/version"
+	"github.com/timsexperiments/LocalBase/internal/version"
 )
 
 // The API described for tools: DESIGN §30. The document is edited by hand, and

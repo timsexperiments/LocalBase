@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 func unload(t *testing.T, c gatewaytest.RunClient, id, query string) (int, map[string]any) {

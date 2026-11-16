@@ -1,7 +1,7 @@
 package backends
 
 import (
-	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/models"
 )
 
 // Modes of a selection.

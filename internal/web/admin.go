@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // Admin (§15 step 4, DESIGN §15.3): people and roles, browser access and API

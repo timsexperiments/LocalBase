@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // `models search` reads the root's saved Hugging Face token without writing the database (S14): it
