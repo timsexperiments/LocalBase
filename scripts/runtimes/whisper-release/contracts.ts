@@ -17,7 +17,11 @@ export const archiveFilenameSchema = z.enum([
 export const whisperLicenseFilename = "LICENSE.whisper.cpp.txt";
 
 export type WhisperTarget = z.infer<typeof whisperTargetSchema>;
-export type Fetcher = typeof fetch;
+// The call the release code makes. typeof fetch would also demand Bun's fetch.preconnect.
+export type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export const archiveSpecification: Record<
   WhisperTarget,

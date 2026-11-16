@@ -10,7 +10,11 @@ export const repositorySchema = z
 export const filePathSchema = z.string().min(1);
 export const ttsPublicationTargetSchema = z.enum(["linux-x64", "macos-arm64"]);
 export type TtsPublicationTarget = z.infer<typeof ttsPublicationTargetSchema>;
-export type Fetcher = typeof fetch;
+// The call the release code makes. typeof fetch would also demand Bun's fetch.preconnect.
+export type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export const LLAMA_CPP_REVISION = "aee56b3abfeb134218fe5c496c329a1faac1ef28";
 export const LLAMA_CPP_SHA256 =

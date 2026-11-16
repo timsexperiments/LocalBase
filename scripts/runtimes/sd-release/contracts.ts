@@ -10,7 +10,11 @@ export const repositorySchema = z
 export const filePathSchema = z.string().min(1);
 export const sdPublicationTargetSchema = z.enum(["linux-x64", "macos-arm64"]);
 export type SdPublicationTarget = z.infer<typeof sdPublicationTargetSchema>;
-export type Fetcher = typeof fetch;
+// The call the release code makes. typeof fetch would also demand Bun's fetch.preconnect.
+export type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export const sourceIdentitySchema = z
   .object({

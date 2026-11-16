@@ -18,7 +18,7 @@ const buildPath = root ? join(root, "build") : "";
 const outputPath = root ? join(root, "whisper-server") : "";
 const licenseOutputPath = root ? join(root, whisperLicenseFilename) : "";
 
-function sha256(bytes: Uint8Array): Promise<string> {
+function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   return crypto.subtle
     .digest("SHA-256", bytes)
     .then((digest) =>

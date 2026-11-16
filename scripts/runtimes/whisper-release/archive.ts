@@ -108,7 +108,11 @@ async function readTarGzRuntime(archivePath: string): Promise<Uint8Array> {
               bytes.set(chunk, offset);
               offset += chunk.length;
             }
-            entries.push({ name: header.name, type: header.type, bytes });
+            entries.push({
+              name: header.name,
+              type: header.type ?? undefined,
+              bytes,
+            });
           } catch (error) {
             entryError ??= error;
           }
