@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { gzipSync, zipSync } from "fflate";
 import { pack as createTarPack } from "tar-stream";
+import { parseManagedRuntimeManifest } from "./lib/manifest";
 import { repositoryManifestPath } from "./lib/paths";
 import {
   validateSdArchiveEntries,
@@ -15,7 +16,8 @@ import {
 import { sdManifestMatches, updateSdManifest } from "./sd-release/manifest";
 import { verifyPublishedSdRelease } from "./sd-release/published-release";
 
-const rawManifest = await Bun.file(repositoryManifestPath).json();
+const rawManifest: ReturnType<typeof parseManagedRuntimeManifest> =
+  await Bun.file(repositoryManifestPath).json();
 
 const licenses = [
   "LICENSE.darts-clone.txt",
@@ -146,7 +148,7 @@ async function tarGz(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
   });
   for (const [name, bytes] of Object.entries(entries)) {
     await new Promise<void>((resolve, reject) =>
-      archive.entry({ name }, bytes, (error) =>
+      archive.entry({ name }, Buffer.from(bytes), (error) =>
         error ? reject(error) : resolve(),
       ),
     );
@@ -198,7 +200,9 @@ test("verifies publication identity and updates only sd-server entries", async (
     const entry = Object.entries(values).find(([name]) =>
       url.endsWith(`/${name}`),
     );
-    return entry ? new Response(entry[1]) : new Response(null, { status: 404 });
+    return entry
+      ? new Response(new Uint8Array(entry[1]))
+      : new Response(null, { status: 404 });
   };
   const output = "/tmp/localbase-sd-release-receipt-test.json";
   const receipt = await verifyPublishedSdRelease(
@@ -262,7 +266,9 @@ test("verifies publication identity and updates only sd-server entries", async (
     const entry = Object.entries(mismatchedValues).find(([name]) =>
       url.endsWith(`/${name}`),
     );
-    return entry ? new Response(entry[1]) : new Response(null, { status: 404 });
+    return entry
+      ? new Response(new Uint8Array(entry[1]))
+      : new Response(null, { status: 404 });
   };
   await expect(
     verifyPublishedSdRelease(repository, tag, output, mismatchedFetcher),

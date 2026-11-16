@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
 import { pack } from "tar-stream";
+import { parseManagedRuntimeManifest } from "./lib/manifest";
 import { repositoryManifestPath } from "./lib/paths";
 import {
   qualifyWhisperArchive,
@@ -16,7 +17,8 @@ import {
 } from "./whisper-release";
 import { whisperLicenseFilename } from "./whisper-release/contracts";
 
-const rawManifest = await Bun.file(repositoryManifestPath).json();
+const rawManifest: ReturnType<typeof parseManagedRuntimeManifest> =
+  await Bun.file(repositoryManifestPath).json();
 
 // Captured from /usr/bin/codesign --display --verbose=4 /Applications/ChatGPT.app.
 const codeDirectoryFixture =
@@ -64,7 +66,7 @@ async function tarGz(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
   });
   for (const [name, bytes] of Object.entries(entries)) {
     await new Promise<void>((resolve, reject) =>
-      archive.entry({ name }, bytes, (error) =>
+      archive.entry({ name }, Buffer.from(bytes), (error) =>
         error ? reject(error) : resolve(),
       ),
     );
