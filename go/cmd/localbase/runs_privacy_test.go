@@ -50,7 +50,7 @@ func TestRunCheckpointsStayOutOfBundles(t *testing.T) {
 
 	// tools/shadow.sh copies an allowlist of root entries; runs/ is not on it,
 	// and no tool copies a whole root.
-	tooldir := filepath.Join(testutil.RepoRoot(t), "go", "tools")
+	tooldir := filepath.Join(testutil.ModuleRoot(t), "tools")
 	b, err := os.ReadFile(filepath.Join(tooldir, "shadow.sh"))
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestRunCheckpointsStayOutOfBundles(t *testing.T) {
 	// minToolScripts means a directory stopped being read.
 	const minToolScripts = 20
 	var tools []string
-	for _, dir := range []string{tooldir, filepath.Join(testutil.RepoRoot(t), "go", "scripts")} {
+	for _, dir := range []string{tooldir, filepath.Join(testutil.ModuleRoot(t), "scripts")} {
 		found, err := filepath.Glob(filepath.Join(dir, "*.sh"))
 		if err != nil {
 			t.Fatal(err)
