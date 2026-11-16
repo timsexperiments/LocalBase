@@ -17,9 +17,5 @@
       ]
     }
   },
-  "include": [
-    "../../scripts/runtimes/kokoro*.ts",
-    "../../runtimes/kokoro/*.ts",
-    "./file-assets.d.ts"
-  ]
+  "include": ["../../scripts/runtimes/kokoro*.ts", "../../runtimes/kokoro/*.ts"]
 }
