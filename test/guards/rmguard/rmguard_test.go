@@ -1,0 +1,252 @@
+// Package rmguard holds a check: no script or command file may delete through a variable, a
+// glob, or a path outside an explicit scratch prefix. Run it before every commit:
+//
+//	go test -count=1 ./test/guards/rmguard
+//
+// LOCALBASE_RM_GUARD_DIRS adds directories of command files, separated by colons, and
+// LOCALBASE_RM_GUARD_TREE scans another checkout's tools instead of this one, reporting
+// only what is not on the list below. It reads files, so it cannot see a command typed
+// straight into a shell.
+package rmguard
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
+	"testing"
+	"testing/fstest"
+
+	"github.com/timsexperiments/LocalBase/go/test/guards/treewalk"
+)
+
+// scratchPrefixes are where an absolute literal path may be deleted.
+var scratchPrefixes = []string{"/private/tmp/claude-", "/private/var/folders/"}
+
+var (
+	rmCommand = regexp.MustCompile("(?:^|[\\s;&|(){'\"`])rm((?:\\s+-[a-zA-Z-]+)*)\\s+([^\\n]*)")
+	rmInCode  = regexp.MustCompile(`"rm"`)
+	otherRm   = regexp.MustCompile(`\b(?:docker|podman|git|kubectl|npm|bun|brew)(?:\s+-\S+)*\s+$`)
+)
+
+// badTarget says what is wrong with one target of rm, or "".
+func badTarget(target string) string {
+	t := strings.Trim(target, `'"`)
+	switch {
+	case t == "":
+		return ""
+	case strings.ContainsAny(t, "$`"):
+		return "a variable"
+	case strings.ContainsAny(t, "*?["):
+		return "a glob"
+	case strings.HasPrefix(t, "~"):
+		return "the home directory"
+	case strings.HasPrefix(t, "/dev"):
+		return "/dev"
+	case strings.HasPrefix(t, ".."):
+		return "a path above this one"
+	case strings.HasPrefix(t, "/"):
+		for _, p := range scratchPrefixes {
+			if strings.HasPrefix(t, p) {
+				return ""
+			}
+		}
+		return "an absolute path outside scratch"
+	}
+	return ""
+}
+
+// findings lists the deletes in one file's text that the rule does not allow.
+func findings(text string) []string {
+	var out []string
+	for n, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if rmInCode.MatchString(line) {
+			out = append(out, fmt.Sprintf("line %d: rm run from code", n+1))
+		}
+		for _, m := range rmCommand.FindAllStringSubmatchIndex(line, -1) {
+			if otherRm.MatchString(line[:m[0]+1]) { // docker rm and the like remove something else
+				continue
+			}
+			rest := line[m[4]:m[5]]
+			if i := strings.IndexAny(rest, ";&|)}"); i >= 0 {
+				rest = rest[:i]
+			}
+			for _, target := range strings.Fields(rest) {
+				if strings.HasPrefix(target, "2>") || strings.HasPrefix(target, ">") {
+					break
+				}
+				if why := badTarget(target); why != "" {
+					out = append(out, fmt.Sprintf("line %d: rm %s: %s", n+1, target, why))
+				}
+			}
+		}
+	}
+	return out
+}
+
+// filter is what the guard reads: scripts and code, not tests, not testdata.
+var filter = treewalk.Filter{
+	SkipDirs:  []string{"node_modules", "testdata", ".git"},
+	SkipTests: true,
+	Exts:      []string{".sh", ".go", ".ts", ".js", ".mjs", ".py", ".pl"},
+	Makefile:  true,
+}
+
+func scan(fsys fs.FS) (map[string][]string, error) {
+	found, _, err := treewalk.Walk(fsys, filter, findings)
+	return found, err
+}
+
+// trees are what the guard reads: tools, test, where step 7 moved the test suites and their
+// scripts, and scripts, where it moved the shell glue. A move from one to another changes neither
+// what is read nor how much. Findings are named from the go directory: tools/..., test/... or
+// scripts/....
+var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}, {Label: "scripts", Dir: "../../../scripts"}}
+
+// minRead is how many files the trees held when it was last raised. A tree that stops being read,
+// or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
+// arrive. Lowered from 112 by step 7's R3b, which deleted four of the files it read (tests aside):
+// tools/integration's audit.go, behind.go, main.go and rerere-env.sh.
+// Set at the root move (M1) to what it reads, the repository's scripts/ included.
+const minRead = 162
+
+// scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as tools
+// is), and checks the floor only for the trees.
+func scanTrees(t *testing.T, other string) map[string][]string {
+	t.Helper()
+	if other != "" {
+		return treewalk.WalkTrees(t, []treewalk.Tree{{Label: "tools", Dir: other}}, 0, filter, findings)
+	}
+	return treewalk.WalkTrees(t, trees, minRead, filter, findings)
+}
+
+// knownToDelete are other threads' scripts that already delete through a variable, with how
+// many such deletes each has. They are reported, not changed here. A file may not gain one,
+// and no other file may join. Lower a number, or remove a line, as they are fixed.
+var knownToDelete = map[string]int{
+	"scripts/contract.sh":                  1,
+	"test/platform/ios-check.sh":           2,
+	"scripts/otelcol-check.sh":             1,
+	"scripts/placement-rollback-check.sh":  1,
+	"tools/rehearsal.sh":                   1,
+	"tools/shadow.sh":                      4,
+	"test/platform/systemd-check.sh":       1,
+	"scripts/tailwind.sh":                  1,
+	"scripts/upgrade-rehearsal-systemd.sh": 1,
+	// Read since the root move put the module's scripts beside the repository's: each removes
+	// a temporary file or directory it made itself (mktemp, or a fixed build directory).
+	"scripts/bootstrap.sh":                 5,
+	"scripts/check-repo-hygiene.test.sh":   1,
+	"scripts/check-signing-jobs.test.sh":   1,
+	"scripts/docs-site.sh":                 1,
+	"scripts/install.sh":                   1,
+	"scripts/release/build.sh":             2,
+	"scripts/release/generate-notices.sh":  2,
+	"scripts/release/rehearse.sh":          1,
+	"scripts/release/test-installer.sh":    1,
+	"scripts/runtimes/build-sd-server.ts":  1,
+	"scripts/runtimes/build-tts-server.ts": 1,
+	"scripts/runtimes/build-whisper.ts":    1,
+}
+
+func TestNothingDeletesThroughAVariableOrOutsideScratch(t *testing.T) {
+	other := os.Getenv("LOCALBASE_RM_GUARD_TREE")
+	found := scanTrees(t, other)
+	var names []string
+	for name := range found {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		if n, ok := knownToDelete[name]; ok && len(found[name]) <= n {
+			if other == "" && len(found[name]) < n {
+				t.Errorf("%s now has %d, so lower its number in knownToDelete from %d", name, len(found[name]), n)
+			}
+			continue
+		}
+		t.Errorf("%s:\n  %s", name, strings.Join(found[name], "\n  "))
+	}
+	if other == "" {
+		for name := range knownToDelete {
+			if _, ok := found[name]; !ok {
+				t.Errorf("%s no longer deletes that way: remove it from knownToDelete", name)
+			}
+		}
+	}
+	for _, dir := range filepath.SplitList(os.Getenv("LOCALBASE_RM_GUARD_DIRS")) {
+		found, err := scan(os.DirFS(dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, f := range found {
+			t.Errorf("%s/%s:\n  %s", dir, name, strings.Join(f, "\n  "))
+		}
+	}
+}
+
+// The check can fail: each shape it exists for is planted, and what it must leave alone.
+func TestGuardFindsEachBadShape(t *testing.T) {
+	for _, c := range []struct {
+		line string
+		bad  bool
+	}{
+		{`rm -rf "$work"`, true},
+		{`rm -f $W/x`, true},
+		{`rm -rf ${dir}/y`, true},
+		{"rm -f `pwd`/z", true},
+		{`rm -rf /tmp/*`, true},
+		{`rm -f foo?.txt`, true},
+		{`rm -f /dev/null`, true},
+		{`rm -rf /dev/shm/none 2>/dev/null`, true},
+		{`rm -rf /`, true},
+		{`rm -rf ~/x`, true},
+		{`rm -f ../x`, true},
+		{`rm -rf /etc/x`, true},
+		{`cd x; rm -rf "$a" b`, true},
+		{`trap 'kill $pid; rm -rf "$profile"' EXIT`, true},
+		{`[ -n x ] && rm -f "$tmp"`, true},
+		{`exec.Command("rm", "-rf", dir)`, true},
+		{"await Bun.$`rm -f ${out}/x.html`;", true},
+		{`rm -rf /private/tmp/claude-501/x/scratchpad/rn-a`, false},
+		{`rm -rf /private/var/folders/2s/T/lblab-123 /private/tmp/claude-501/y`, false},
+		{`rm -f plain-file.txt`, false},
+		{`rm -rf /private/tmp/claude-501/$x`, true},
+		{`docker rm -f "$name"`, false},
+		{`git rm -f "$name"`, false},
+		{`# rm -rf "$work"`, false},
+		{`// rm -rf "$work"`, false},
+		{`echo "firm $x"`, false},
+		{`format --rm "$x"`, false},
+	} {
+		if got := len(findings(c.line)) > 0; got != c.bad {
+			t.Errorf("%q: found %v, want %v: %v", c.line, got, c.bad, findings(c.line))
+		}
+	}
+	got, err := scan(fstest.MapFS{
+		"a.sh":          {Data: []byte("rm -rf \"$x\"\n")},
+		"b":             {Data: []byte("#!/bin/sh\nrm -rf \"$x\"\n")},
+		"Makefile":      {Data: []byte("clean:\n\trm -rf $(OUT)\n")},
+		"notes.md":      {Data: []byte("rm -rf \"$x\"\n")},
+		"testdata/c.sh": {Data: []byte("rm -rf \"$x\"\n")},
+		"d_test.go":     {Data: []byte("rm -rf \"$x\"\n")},
+		"good.sh":       {Data: []byte("rm -f plain\n")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for n := range got {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	if want := []string{"Makefile", "a.sh", "b"}; !slices.Equal(names, want) {
+		t.Errorf("found %q, want %q", names, want)
+	}
+}

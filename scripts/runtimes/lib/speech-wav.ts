@@ -1,7 +1,7 @@
 // The TypeScript gateway's speech WAV checks, copied verbatim from
 // src/domains/runtime/speech-supervisor.ts when the runtime release scripts stopped importing src/
 // (retirement R4b). The Kokoro release test holds the runtime's output to them. The Go gateway's
-// own check is wavSamples in go/internal/gateway/infer/speech.go.
+// own check is wavSamples in internal/gateway/infer/speech.go.
 export const SPEECH_MAX_FRAMES = 256;
 
 export const SPEECH_SAMPLES_PER_FRAME = 1_920;

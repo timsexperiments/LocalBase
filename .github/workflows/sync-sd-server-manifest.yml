@@ -74,20 +74,20 @@ jobs:
       - name: Update and verify only sd-server manifest entries
         run: |
           bun run scripts/runtimes/sd-release.ts update-manifest \
-            --manifest go/internal/runtime/managed-runtime-manifest.json \
+            --manifest internal/runtime/managed-runtime-manifest.json \
             --receipt "$RUNNER_TEMP/sd-server-release-receipt.json"
           bun run scripts/runtimes/sd-release.ts verify-manifest \
-            --manifest go/internal/runtime/managed-runtime-manifest.json \
+            --manifest internal/runtime/managed-runtime-manifest.json \
             --receipt "$RUNNER_TEMP/sd-server-release-receipt.json"
       - name: Commit manifest update
         id: commit
         env:
           RUNTIME_TAG: ${{ steps.runtime.outputs.tag }}
         run: |
-          if git diff --quiet -- go/internal/runtime/managed-runtime-manifest.json; then
+          if git diff --quiet -- internal/runtime/managed-runtime-manifest.json; then
             printf 'changed=false\n' >> "$GITHUB_OUTPUT"
           else
-            git add go/internal/runtime/managed-runtime-manifest.json
+            git add internal/runtime/managed-runtime-manifest.json
             git commit -m "chore: pin $RUNTIME_TAG sd-server runtime archives"
             printf 'changed=true\n' >> "$GITHUB_OUTPUT"
           fi

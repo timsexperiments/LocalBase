@@ -25,7 +25,7 @@ Not qualified yet. See [platforms and hardware](../README.md#platforms-and-hardw
 Only through an authenticated HTTPS proxy or tunnel with a sign-in provider configured. See [authentication](authentication.md).
 
 **Who owns the data in my chats?**
-Chat history is stored in your browser, not on the server. See `go/DESIGN.md` §21.6 for the short-lived server checkpoints.
+Chat history is stored in your browser, not on the server. See `docs/DESIGN.md` §21.6 for the short-lived server checkpoints.
 
 **What's the license?**
 AGPL-3.0-or-later. Models have their own licenses, shown in the catalog.

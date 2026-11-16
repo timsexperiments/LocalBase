@@ -33,10 +33,10 @@ expect() {
 
 expect pass "clean tree"
 
-printf 'stub\n' > go/fakebackend
+printf 'stub\n' > fakebackend
 git add -A
 expect fail "named build output"
-git rm -qf --cached go/fakebackend && rm go/fakebackend
+git rm -qf --cached fakebackend && rm fakebackend
 
 printf '\000\001\002binary' > tool.dat
 git add -A

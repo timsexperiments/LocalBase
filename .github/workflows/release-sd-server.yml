@@ -10,8 +10,8 @@ on:
       - scripts/runtimes/sd-release/**
       - scripts/runtimes/sd-patches/**
       - .github/workflows/sync-sd-server-manifest.yml
-      - go/internal/runtime/video.go
-      - go/internal/runtime/video_args_test.go
+      - internal/runtime/video.go
+      - internal/runtime/video_args_test.go
       - .github/actions/go-setup/**
       - scripts/runtimes/sd-gpu-pci-contract.ts
   workflow_dispatch:
@@ -84,7 +84,6 @@ jobs:
       - name: It accepts the gateway's video launch arguments
         # The Go launcher's own arguments (internal/runtime sdVideoArgs), run against this binary with
         # --help. It must pass, not skip: a skip would mean the binary went unchecked.
-        working-directory: go
         env:
           LOCALBASE_SD_SERVER_BINARY: ${{ github.workspace }}/build-sd-server/sd-server
         run: |
@@ -148,7 +147,6 @@ jobs:
       - name: It accepts the gateway's video launch arguments
         # The Go launcher's own arguments (internal/runtime sdVideoArgs), run against this binary with
         # --help. It must pass, not skip: a skip would mean the binary went unchecked.
-        working-directory: go
         env:
           LOCALBASE_SD_SERVER_BINARY: ${{ github.workspace }}/build-sd-server/sd-server
         run: |

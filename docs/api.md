@@ -28,4 +28,4 @@ The gateway listens on `http://127.0.0.1:2273` by default. Send an API key from 
 
 `/_localbase/` routes aren't part of the [stable `/v1` API](versioning.md) and can change between releases. A running gateway describes both at `GET /openapi.json`, with no credentials needed. See the [host and admission API](host-api.md).
 
-See [API details](api-details.md) for request and response contracts, and `go/DESIGN.md` §21 for detached runs.
+See [API details](api-details.md) for request and response contracts, and `docs/DESIGN.md` §21 for detached runs.

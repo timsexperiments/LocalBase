@@ -14,7 +14,7 @@ output="$(mktemp "${TMPDIR:-/tmp}/lb-notices.XXXXXX")"
 modules="$(mktemp "${TMPDIR:-/tmp}/lb-modules.XXXXXX")"
 trap 'rm -f "$output" "$modules"' EXIT
 
-cd "$repo/go"
+cd "$repo"
 for platform in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
   GOOS=${platform%/*} GOARCH=${platform#*/} CGO_ENABLED=0 go list -deps \
     -f '{{with .Module}}{{if not .Main}}{{.Path}} {{.Version}} {{.Dir}}{{end}}{{end}}' ./cmd/localbase

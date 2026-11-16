@@ -27,11 +27,11 @@ These are computed by the real admission code on a simulated host, not measured 
 - **8 GiB:** nothing can load with the default reserve.
 - **16 GiB:** an 8 GiB model needs all 16 GiB free, which can't happen on a running system. Running models stop as soon as free memory drops under 8 GiB.
 
-**The default may change.** Options and the analysis are in [`go/docs/memory-reserve.md`](../go/docs/memory-reserve.md). No default has changed, and a new one would only reach new data directories.
+**The default may change.** Options and the analysis are in [`docs/internals/memory-reserve.md`](../docs/internals/memory-reserve.md). No default has changed, and a new one would only reach new data directories.
 
 ## Help by checking a real Mac
 
-Nobody has tested this on a real 8 or 16 GiB Mac, and any new default needs that first. From `go/`:
+Nobody has tested this on a real 8 or 16 GiB Mac, and any new default needs that first. From the repository's top:
 
 ```sh
 scripts/reserve-check.sh sample 300     # read-only, during normal use with a browser and apps open

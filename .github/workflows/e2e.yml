@@ -1,15 +1,15 @@
 name: Browser suite
 
-# Real browser, fake backends. See go/docs/reliability.md. Findings are a warning for now;
+# Real browser, fake backends. See docs/internals/reliability.md. Findings are a warning for now;
 # a suite that can't run fails the job.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - "go/internal/web/**"
-      - "go/test/browser/e2e/**"
-      - "go/test/browser/e2e.sh"
-      - "go/test/browser/axe.pins"
+      - "internal/web/**"
+      - "test/browser/e2e/**"
+      - "test/browser/e2e.sh"
+      - "test/browser/axe.pins"
       - ".github/scripts/e2e-artifacts.sh"
       - ".github/workflows/e2e.yml"
   schedule:
@@ -40,8 +40,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -50,13 +50,12 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .e2e-cache
-          key: e2e-v3-${{ runner.os }}-${{ hashFiles('go/test/browser/e2e/pins', 'go/test/browser/axe.pins') }}
+          key: e2e-v3-${{ runner.os }}-${{ hashFiles('test/browser/e2e/pins', 'test/browser/axe.pins') }}
       - name: Let Chrome's sandbox run
         # Ubuntu's AppArmor stops unprivileged user namespaces, which the sandbox needs.
         # This relaxes it on this disposable runner, so the sandbox can stay on.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run the suite
-        working-directory: go
         run: |
           code=0
           test/browser/e2e.sh -out "$RUNNER_TEMP/e2e" || code=$?

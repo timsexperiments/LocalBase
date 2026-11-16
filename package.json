@@ -15,7 +15,7 @@
   "scripts": {
     "typecheck": "bunx tsgo --noEmit",
     "format": "bunx prettier --write scripts",
-    "catalog:feed": "cd go && go run ./tools/catalog-feed"
+    "catalog:feed": "go run ./tools/catalog-feed"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",

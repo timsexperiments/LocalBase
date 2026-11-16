@@ -43,7 +43,7 @@ A `v*` tag starts a release, and nothing protects those tags yet.
 
 ## General
 
-- [ ] Delete head branches on merge is on today. **Keep the old stack branches until TypeScript retires**, as `go/docs/merge-readiness.md` says, so hold off merging those PRs individually.
+- [ ] Delete head branches on merge is on today. **Keep the old stack branches until TypeScript retires**, as `docs/internals/merge-readiness.md` says, so hold off merging those PRs individually.
 - [ ] Turn on Discussions if you want a place for questions, and link it from `SUPPORT.md`. It's off today.
 - [ ] Turn off the Wiki and Projects if unused, so documentation stays in the repo.
 - [ ] Create the labels proposed in [labels](labels.md).

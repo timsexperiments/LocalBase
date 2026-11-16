@@ -59,7 +59,7 @@ jobs:
           fi
           # The Go tree and what it reads, this workflow and its setup action, and what bun-scripts
           # tests: the release and notice scripts, the Kokoro runtime and the Bun manifest.
-          if printf '%s\n' "$files" | grep -qE '^(go/|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
+          if printf '%s\n' "$files" | grep -qE '^(cmd/|internal/|test/|tools/|go\.mod$|go\.sum$|\.golangci\.yml$|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
             echo go=true >> "$GITHUB_OUTPUT"
           else
             echo go=false >> "$GITHUB_OUTPUT"
@@ -72,9 +72,6 @@ jobs:
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,9 +126,6 @@ jobs:
       fail-fast: false
       matrix:
         shard: [0, 1, 2]
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -151,9 +145,6 @@ jobs:
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -172,9 +163,6 @@ jobs:
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -200,9 +188,6 @@ jobs:
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -216,7 +201,7 @@ jobs:
         run: go test ./test/chaos -run '^TestGatewayKilledOutright$' -count=1
 
   jstest:
-    # The page scripts' unit tests (go/tools/jstest), which no Go job ran: a module-load error in
+    # The page scripts' unit tests (tools/jstest), which no Go job ran: a module-load error in
     # one passed every PR. Bun at the pin and version the runtime release workflows use.
     needs: scope
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
@@ -234,7 +219,7 @@ jobs:
       - name: Install the page tests' packages
         run: bun install --frozen-lockfile
       - name: Page script unit tests
-        run: bun test go/tools/jstest
+        run: bun test tools/jstest
 
   bun-scripts:
     # The Bun scripts' tests and typecheck, which ci.yml ran until it went with the TypeScript
@@ -270,9 +255,6 @@ jobs:
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'macos')))
     runs-on: macos-15
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -315,9 +297,6 @@ jobs:
       fail-fast: false
       matrix:
         shard: [0, 1]
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -338,9 +317,6 @@ jobs:
     if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'macos')))
     runs-on: macos-15
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: go
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

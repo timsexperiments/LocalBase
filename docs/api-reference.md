@@ -1,6 +1,6 @@
 # API reference
 
-<!-- Generated from go/internal/gateway/openapi.json. Do not edit this page: change the document, then run `go run ./tools/openapi-docs` from go/. -->
+<!-- Generated from internal/gateway/openapi.json. Do not edit this page: change the document, then run `go run ./tools/openapi-docs`. -->
 
 `/v1` is the stable API. `/_localbase` is for administering one installation, and can change between releases. Errors use the OpenAI envelope; branch on `error.code`. A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with an API key, and the gateway sends no CORS headers, so a key cannot be used from a web page.
 

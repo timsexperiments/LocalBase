@@ -27,7 +27,7 @@ files() {
 
 while IFS= read -r path; do
   case "$path" in
-    go/localbase | go/local-base | go/fakebackend | dist/* | .design/*)
+    localbase | local-base | fakebackend | dist/* | .design/*)
       fail "$path must not be committed (build output or local research)"
       ;;
   esac

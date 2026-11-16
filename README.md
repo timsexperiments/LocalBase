@@ -41,7 +41,7 @@ Requests must name a model. `local-base models recommend` lists what fits your m
 
 ### Build from source
 
-Needs the Go version in [`go/go.mod`](go/go.mod).
+Needs the Go version in [`go.mod`](go.mod).
 
 ```sh
 git clone https://github.com/timsexperiments/LocalBase.git
@@ -106,12 +106,12 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 - [Authentication](docs/authentication.md), [first-run sign-in](docs/first-run-sign-in.md), [`--no-auth`](docs/no-auth.md) and [user catalog entries](docs/user-catalog.md)
 - [Why a model was refused](docs/model-refusals.md), [the memory reserve](docs/memory-reserve-guide.md), [GPU memory limit](docs/gpu-memory-limit.md) and [install failures](docs/install-failures.md)
 - [Privacy](docs/privacy.md), [where secrets live](docs/secrets.md), [model licenses](docs/model-licenses.md), [speech marking](docs/speech-marking.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [name and marks](TRADEMARKS.md)
-- [Design notes](go/DESIGN.md) and [changelog](CHANGELOG.md)
+- [Design notes](docs/DESIGN.md) and [changelog](CHANGELOG.md)
 - [Versioning and deprecation](docs/versioning.md), [release checklist](docs/release-checklist.md) and [TypeScript retirement](docs/typescript-retirement.md)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The code is in [`go/`](go/); the TypeScript version is retired, and its 0.1.0 release stays the rollback. To report a vulnerability, see [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). The Go code is at the top of the repository (`cmd/`, `internal/`); the TypeScript version is retired, and its 0.1.0 release stays the rollback. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
