@@ -23,9 +23,9 @@ const (
 // files (go/test/harness, fsguard aside), each with a floor.
 func TestNoUnguardedWrites(t *testing.T) {
 	files, _ := filepath.Glob("*_test.go")
-	root := testutil.RepoRoot(t)
-	systemFiles, _ := filepath.Glob(filepath.Join(root, "go", "test", "system", "*_test.go"))
-	harnessFiles, _ := filepath.Glob(filepath.Join(root, "go", "test", "harness", "*.go"))
+	root := testutil.ModuleRoot(t)
+	systemFiles, _ := filepath.Glob(filepath.Join(root, "test", "system", "*_test.go"))
+	harnessFiles, _ := filepath.Glob(filepath.Join(root, "test", "harness", "*.go"))
 	if len(files) < minGuardedOwnFiles || len(systemFiles) < minGuardedSystemFiles || len(harnessFiles) < minGuardedHarnessFiles {
 		t.Fatalf("read %d test files here, %d in go/test/system and %d harness files, under the floors (%d, %d, %d)",
 			len(files), len(systemFiles), len(harnessFiles), minGuardedOwnFiles, minGuardedSystemFiles, minGuardedHarnessFiles)

@@ -108,16 +108,36 @@ const (
 // step 7's R4). Every package under go/test registers test flags or writes only to scratch, so
 // none belongs in a binary. The walk fails below its floors, so one that reads nothing can't pass.
 func TestNoProductionImports(t *testing.T) {
-	goDir := filepath.Join(testutil.RepoRoot(t), "go")
-	const testPrefix = "github.com/timsexperiments/LocalBase/go/test/"
+	goDir := testutil.ModuleRoot(t)
+	// The module's path is read from go.mod, so the prefix holds whatever the module is called (the
+	// move to the top renames it); a literal that stopped matching would let every import through.
+	mod, err := os.ReadFile(filepath.Join(goDir, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var modulePath string
+	for _, line := range strings.Split(string(mod), "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+			modulePath = strings.Trim(strings.TrimSpace(rest), `"`)
+			break
+		}
+	}
+	if modulePath == "" {
+		t.Fatalf("no module line in %s", filepath.Join(goDir, "go.mod"))
+	}
+	testPrefix := modulePath + "/test/"
 	files, packages := 0, map[string]bool{}
-	err := filepath.WalkDir(goDir, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(goDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		rel, _ := filepath.Rel(goDir, path)
 		if d.IsDir() {
-			if rel == "test" || rel == "tools" || d.Name() == "testdata" || (rel != "." && strings.HasPrefix(d.Name(), ".")) {
+			// node_modules and dist aren't the product's Go source but may sit in the tree (bun's
+			// installs, release output), and npm packages sometimes ship .go files: once the module
+			// is the repository's top, the walk would read them as product imports.
+			if rel == "test" || rel == "tools" || d.Name() == "testdata" || d.Name() == "node_modules" || d.Name() == "dist" ||
+				(rel != "." && strings.HasPrefix(d.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			return nil

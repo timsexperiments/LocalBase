@@ -101,8 +101,11 @@ jobs:
         # system (contract), test/chaos (chaos.yml, and one test in small), tools/soak and test/lab
         # (small, without -race).
         run: |
-          # shellcheck disable=SC2046 # one argument per package
-          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/test/lab$')
+          # scripts/unit-packages.sh leaves those out by their place in the module, and fails if one
+          # of them is still in the list.
+          pkgs=$(scripts/unit-packages.sh)
+          # shellcheck disable=SC2086 # one argument per package
+          go test -race -timeout 30m $pkgs
       - name: Build everything the other jobs build, for the cache
         # Compiles and links every test binary, with and without -race, and runs none of them.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -285,8 +288,11 @@ jobs:
       - name: Unit tests
         # The same packages as Linux's unit job.
         run: |
-          # shellcheck disable=SC2046 # one argument per package
-          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/test/lab$')
+          # scripts/unit-packages.sh leaves out the suites with jobs of their own, by their place in
+          # the module, and fails if one of them is still in the list.
+          pkgs=$(scripts/unit-packages.sh)
+          # shellcheck disable=SC2086 # one argument per package
+          go test -race -timeout 30m $pkgs
       - name: Build everything the other jobs build, for the cache
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |

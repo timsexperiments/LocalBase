@@ -27,7 +27,7 @@ func hubFixtures(t *testing.T) string {
 // recording fails the test, otherwise it is a 404.
 func hubFixtureServer(t *testing.T, strict bool) string {
 	t.Helper()
-	recordings := filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "hub")
+	recordings := filepath.Join(testutil.ModuleRoot(t), "internal", "hub", "testdata", "hub")
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sum := sha256.Sum256([]byte("https://huggingface.co" + r.URL.RequestURI()))
 		b, err := os.ReadFile(filepath.Join(recordings, hex.EncodeToString(sum[:])[:24]+".json"))
@@ -53,7 +53,7 @@ func hubFixtureServer(t *testing.T, strict bool) string {
 // against the recorded Hub and compares output lines, data, written catalog
 // files and errors with what the TS command handlers produced.
 func TestCLIHubGolden(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "golden.json"))
+	b, err := os.ReadFile(filepath.Join(testutil.ModuleRoot(t), "internal", "hub", "testdata", "golden.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func selectSTT(t *testing.T, rootDir, id string) {
 // recorded Hub: search, a preview equal to TS's, and an add the catalog
 // picks up without a restart.
 func TestModelDiscoveryEndToEnd(t *testing.T) {
-	b, _ := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "golden.json"))
+	b, _ := os.ReadFile(filepath.Join(testutil.ModuleRoot(t), "internal", "hub", "testdata", "golden.json"))
 	var g struct {
 		Discovery struct {
 			OK struct {
