@@ -1,1 +1,0 @@
-process.env.LOCALBASE_QUIET_TEST_LOGS = "1";

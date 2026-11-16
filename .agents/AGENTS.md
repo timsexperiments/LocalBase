@@ -1,6 +1,6 @@
 # Project Guidelines
 
-- **Where Work Goes**: New work goes in `go/`. `src/` is the legacy TypeScript version; change it only for a fix the rollback path needs or a catalog or runtime pin the Go sync still reads.
+- **Where Work Goes**: New work goes in `go/`. The TypeScript gateway is retired; its 0.1.0 binary, on the v0.1.0 release, is the rollback path. Bun remains for the runtime release scripts in `scripts/runtimes/`, the Kokoro runtime in `runtimes/kokoro/` and the page-script tests in `go/tools/jstest/`.
 - **Package Management & Execution**: Go code uses the Go toolchain. Use only `bun` (never `pnpm`, `npm`, or `yarn`) for the JavaScript and TypeScript tooling in this repository.
 - **Consistent Code Style**: Follow established repository naming and code style when adding or changing code. Keep related declarations consistent and resolve nearby inconsistencies when the change remains focused.
 - **Contributor-Focused Writing**: Write comments and documentation for future contributors, including engineers and AI agents. Explain only durable context that helps readers understand intent, constraints, or non-obvious behavior. Do not mention prior conversations, implementation narratives, or temporary decision history. Runbooks may document specific incidents and observed errors when operationally useful.

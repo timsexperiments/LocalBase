@@ -1,6 +1,6 @@
 # Video support and limits
 
-Video generation is experimental. Accepted runtime targets are declared per profile in the [catalog](../src/catalog.ts): the Wan T2V and FastWan profiles support macOS ARM64 as well as Linux x64 with one NVIDIA GPU. Wan 2.2 S2V is restricted to Linux x64 with one NVIDIA GPU. A supported runtime target does not mean that a profile has been hardware qualified.
+Video generation is experimental. Accepted runtime targets are declared per profile in the [catalog](../go/internal/catalog/data/video/): the Wan T2V and FastWan profiles support macOS ARM64 as well as Linux x64 with one NVIDIA GPU. Wan 2.2 S2V is restricted to Linux x64 with one NVIDIA GPU. A supported runtime target does not mean that a profile has been hardware qualified.
 
 Text-to-video models produce silent video. Combining video with separately generated speech is client-side voiceover composition, not lip synchronization or native audio generation. Output quality and motion vary; concurrent inference and broader hardware support are not qualified.
 

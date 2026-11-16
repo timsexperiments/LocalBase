@@ -1,7 +1,5 @@
-# Dependencies and generated TypeScript assets (legacy src/)
+# Dependencies of the Bun scripts
 node_modules/
-src/db/migration-assets.ts
-src/ui/assets.generated.ts
 
 # Build output. CI rejects these if they are ever committed.
 dist/

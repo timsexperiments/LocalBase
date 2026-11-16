@@ -20,6 +20,6 @@
   "include": [
     "../../scripts/runtimes/kokoro*.ts",
     "../../runtimes/kokoro/*.ts",
-    "../../src/file-assets.d.ts"
+    "./file-assets.d.ts"
   ]
 }
