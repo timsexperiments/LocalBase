@@ -14,7 +14,6 @@
     "outDir": "dist"
   },
   "include": [
-    "scripts/runtimes/*-contract.ts",
-    "scripts/runtimes/lib/*.ts"
+    "scripts/**/*.ts"
   ]
 }
