@@ -283,12 +283,14 @@ var documentedStatusCode = regexp.MustCompile("\\b[45][0-9][0-9]`?(?: with| and)
 // documentedErrorCodes reads the code out of the design notes and the pages.
 func documentedErrorCodes(t *testing.T) map[string]string {
 	t.Helper()
-	paths := []string{filepath.Join("..", "..", "DESIGN.md")}
 	docs := filepath.Join(testutil.RepoRoot(t), "docs")
+	design := filepath.Join(docs, "DESIGN.md") // the design notes first, then the pages beside them
+	paths := []string{design}
 	pages, err := filepath.Glob(filepath.Join(docs, "*.md"))
 	if err != nil || len(pages) == 0 {
 		t.Fatalf("no pages in %s to read codes from: %v", docs, err)
 	}
+	pages = slices.DeleteFunc(pages, func(p string) bool { return p == design })
 	found := map[string]string{}
 	for _, p := range append(paths, pages...) {
 		raw, err := os.ReadFile(p)
@@ -330,7 +332,7 @@ func errorCodeEnum(t *testing.T) []string {
 	return doc.Components.Schemas.ErrorCode.Enum
 }
 
-const errorCodeFix = "Fix: the list is components.schemas.ErrorCode in internal/gateway/openapi.json. Then from go/: go run ./tools/openapi-docs"
+const errorCodeFix = "Fix: the list is components.schemas.ErrorCode in internal/gateway/openapi.json. Then: go run ./tools/openapi-docs"
 
 // A code is an API: clients branch on it. So every code the source can send and every code the
 // notes and pages name is on the document's list, and everything on that list is really sent.

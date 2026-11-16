@@ -1,7 +1,7 @@
 // Markdown for model replies, the GitHub-flavoured subset chat models use:
 // paragraphs, headings, fenced and inline code, emphasis, strikethrough,
 // links, lists, blockquotes, rules and pipe tables. parse() returns plain
-// objects (tested in go/tools/jstest); build() turns them into DOM nodes
+// objects (tested in tools/jstest); build() turns them into DOM nodes
 // with textContent only, never innerHTML. Raw HTML stays literal text, and
 // links are kept only for http, https and mailto.
 

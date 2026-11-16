@@ -14,7 +14,7 @@ This page says what has actually been run, and on what. "Not run" doesn't mean i
 
 "Refused" means `409 backend_not_selected`: LocalBase didn't choose a backend for that model there.
 
-**macOS, Apple Silicon** is the daily-use platform. Earlier project runs covered image, speech, transcription and video on it, recorded in `go/DESIGN.md`. They weren't repeated for this page.
+**macOS, Apple Silicon** is the daily-use platform. Earlier project runs covered image, speech, transcription and video on it, recorded in `docs/DESIGN.md`. They weren't repeated for this page.
 
 **Video:** from reading the code, it only targets macOS on Apple Silicon. No real video request was run on the other platforms.
 

@@ -38,7 +38,7 @@ func RepoRoot(t Fataler) string {
 
 // ModuleRoot is the Go module's directory: the nearest one above the working directory that holds
 // go.mod. A test that reads a file inside the module by a path from its top starts from here, so
-// the path holds wherever the module sits in the repository (go/ today, the top after the move).
+// the path holds wherever the module sits in the repository (go/ until the root move, the top since).
 // It fails the test when there is no such directory.
 func ModuleRoot(t Fataler) string {
 	t.Helper()

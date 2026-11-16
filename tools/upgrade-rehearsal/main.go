@@ -2,7 +2,7 @@
 // root under its own service label, a throwaway signing key, a release served from loopback and
 // a fake backend. No real models and no network. DESIGN §33.6.
 //
-//	go run ./tools/upgrade-rehearsal              # the whole drill, from go/
+//	go run ./tools/upgrade-rehearsal              # the whole drill
 //	go run ./tools/upgrade-rehearsal --preflight  # the refusals only, changes nothing
 //	go run ./tools/upgrade-rehearsal --cleanup    # remove what an interrupted run left
 //
@@ -218,7 +218,7 @@ func sameLive(a, b map[string]liveState) string {
 
 // releaseBuild is how scripts/build.sh, the one build recipe, builds a release of a version: its
 // go build flags, -ldflags and environment, read from the script rather than copied, so the kit
-// can't drift from what CI ships. Run from go/, like the rest of this command.
+// can't drift from what CI ships. Run from the module, like the rest of this command.
 type releaseBuild struct {
 	goflags []string
 	ldflags string

@@ -1,6 +1,6 @@
 name: Bench
 
-# What the gateway itself costs, against fake backends. See go/docs/performance.md.
+# What the gateway itself costs, against fake backends. See docs/internals/performance.md.
 # CI has its own baselines, because a runner isn't a developer's machine even with the
 # same platform label. Dispatch with write_baseline to get one to commit.
 on:
@@ -37,10 +37,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
       - name: Measure
-        working-directory: go
         env:
           WRITE_BASELINE: ${{ inputs.write_baseline }}
         # A regression is a warning for now, because runner noise is unknown. A tool

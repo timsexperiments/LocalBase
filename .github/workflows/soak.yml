@@ -2,7 +2,7 @@ name: Soak
 
 # Reliability runs against fake backends: no models, no GPU. Not a pull request gate,
 # because they take minutes and a failure needs a person to read it. See
-# go/docs/reliability.md. A failure here on Linux may be the harness rather than the
+# docs/internals/reliability.md. A failure here on Linux may be the harness rather than the
 # gateway, since it first ran on Linux in CI.
 on:
   schedule:
@@ -40,14 +40,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
       - name: One cycle
         # TMPDIR keeps a failing run's scratch root somewhere the next step can find it.
         run: |
           mkdir -p "$RUNNER_TEMP/soak-scratch"
           TMPDIR="$RUNNER_TEMP/soak-scratch" LOCALBASE_SOAK_HARD_SECONDS=900 \
-            go/scripts/soak.sh -smoke -out "$RUNNER_TEMP/soak"
+            scripts/soak.sh -smoke -out "$RUNNER_TEMP/soak"
       - name: Check what may be published
         id: stage
         if: always()
@@ -73,19 +73,19 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
       - name: The 30-minute soak
         run: |
           mkdir -p "$RUNNER_TEMP/soak-scratch"
-          TMPDIR="$RUNNER_TEMP/soak-scratch" go/scripts/soak.sh -duration 30m -out "$RUNNER_TEMP/soak"
+          TMPDIR="$RUNNER_TEMP/soak-scratch" scripts/soak.sh -duration 30m -out "$RUNNER_TEMP/soak"
       - name: One cycle with the race detector
         # Runs even if the soak fails, because a race report often explains it.
         if: ${{ !cancelled() }}
         run: |
           mkdir -p "$RUNNER_TEMP/soak-scratch"
           TMPDIR="$RUNNER_TEMP/soak-scratch" LOCALBASE_SOAK_HARD_SECONDS=1200 \
-            go/scripts/soak.sh -smoke -race -out "$RUNNER_TEMP/soak-race"
+            scripts/soak.sh -smoke -race -out "$RUNNER_TEMP/soak-race"
       - name: Check what may be published
         id: stage
         if: always()

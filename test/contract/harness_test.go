@@ -16,7 +16,7 @@
 //
 // LOCALBASE_CONTRACT_COVERDIR builds the Go binaries with -cover and collects
 // their coverage there, which is the only coverage of what this suite exercises
-// (go/docs/production-inventory.md).
+// (docs/internals/production-inventory.md).
 package contract
 
 import (
@@ -27,7 +27,7 @@ import (
 )
 
 // TestMain runs the package's tests through the harness, which launches the shared targets
-// when a test first asks and stops them at the end. The CLI builds went with go/test/system.
+// when a test first asks and stops them at the end. The CLI builds went with test/system.
 func TestMain(m *testing.M) {
 	os.Exit(harness.Main(m))
 }

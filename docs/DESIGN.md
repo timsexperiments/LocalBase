@@ -6346,7 +6346,7 @@ One pass on a real model, on 2026-11-02, by `tools/real-embedding-check.sh` at `
 
 ## 36. Threat model and root permissions (2026-11-03)
 
-The threat model is [`docs/threat-model.md`](docs/threat-model.md): what LocalBase protects, from whom, the
+The threat model is [`docs/internals/threat-model.md`](internals/threat-model.md): what LocalBase protects, from whom, the
 residual risks, what was proven and what was only read. This section holds the one decision made
 for it rather than for a finding.
 

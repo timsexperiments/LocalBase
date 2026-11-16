@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // The tables in docs/memory-reserve.md, computed through the real admission and
@@ -51,7 +54,7 @@ func gibs(b int64) string { return fmt.Sprintf("%.1f", float64(b)/float64(GiB)) 
 func reserveAsPolicy(b int64) Reserve { return Reserve{MinimumGB: float64(b) / float64(GiB)} }
 
 func TestReserveTables(t *testing.T) {
-	doc, err := os.ReadFile("../../docs/memory-reserve.md")
+	doc, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "docs", "internals", "memory-reserve.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

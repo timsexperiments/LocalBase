@@ -7,7 +7,7 @@
 //   LOCALBASE_QUALIFY_URL=http://127.0.0.1:<port> \
 //   LOCALBASE_QUALIFY_MODEL=clef-flash-q4_k_m \
 //   LOCALBASE_QUALIFY_KEY=<key> LOCALBASE_QUALIFY_NOSCOPE_KEY=<key> \
-//     bun run go/tools/decision-qualify.ts
+//     bun run tools/decision-qualify.ts
 //
 // LOCALBASE_QUALIFY_KEY needs four scopes: inference:decision,
 // inference:chat, inference:embeddings and models:read (the chat and

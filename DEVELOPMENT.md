@@ -1,36 +1,35 @@
 # Development overview
 
-LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server-rendered UI and the CLI. It runs each model in a separate backend process, such as `llama-server`, and proxies to it. [`go/DESIGN.md`](go/DESIGN.md) is the detailed design and history.
+LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server-rendered UI and the CLI. It runs each model in a separate backend process, such as `llama-server`, and proxies to it. [`docs/DESIGN.md`](docs/DESIGN.md) is the detailed design and history.
 
 ## Repo map
 
 | Path | What it is |
 | --- | --- |
-| `go/cmd/localbase/` | CLI entry point and one file per command. `serve.go` wires everything |
-| `go/internal/gateway/` | HTTP router, OpenAI and admin handlers, detached runs |
-| `go/internal/web/` | UI: Go templates, htmx, small JavaScript files, compiled Tailwind CSS |
-| `go/internal/runtime/` | Launch plans, process supervision, per-type queues, runtime downloads |
-| `go/internal/memory/` | Host memory readings, estimates and admission |
-| `go/internal/placement/` | CPU and GPU placement planner |
-| `go/internal/catalog/` | Built-in catalog, user entries and the remote feed |
-| `go/internal/hub/`, `acquire/`, `install/` | Hugging Face discovery and downloads |
-| `go/internal/auth/` | API keys, browser sessions, OIDC, Cloudflare Access, policy |
-| `go/internal/store/` | SQLite, migrations (drizzle-format SQL, pinned as 0.1.0's set) and typed queries |
-| `go/internal/root/` | Data directory, marker and the gateway lock |
-| `go/internal/service/` | launchd and systemd user units |
-| `go/internal/obs/`, `otlp/` | Logs, redaction and OTLP export |
-| `go/test/contract/` | Black-box HTTP contract suite |
-| `go/tools/` | Check scripts and test tools |
+| `cmd/localbase/` | CLI entry point and one file per command. `serve.go` wires everything |
+| `internal/gateway/` | HTTP router, OpenAI and admin handlers, detached runs |
+| `internal/web/` | UI: Go templates, htmx, small JavaScript files, compiled Tailwind CSS |
+| `internal/runtime/` | Launch plans, process supervision, per-type queues, runtime downloads |
+| `internal/memory/` | Host memory readings, estimates and admission |
+| `internal/placement/` | CPU and GPU placement planner |
+| `internal/catalog/` | Built-in catalog, user entries and the remote feed |
+| `internal/hub/`, `acquire/`, `install/` | Hugging Face discovery and downloads |
+| `internal/auth/` | API keys, browser sessions, OIDC, Cloudflare Access, policy |
+| `internal/store/` | SQLite, migrations (drizzle-format SQL, pinned as 0.1.0's set) and typed queries |
+| `internal/root/` | Data directory, marker and the gateway lock |
+| `internal/service/` | launchd and systemd user units |
+| `internal/obs/`, `otlp/` | Logs, redaction and OTLP export |
+| `test/contract/` | Black-box HTTP contract suite |
+| `tools/` | Check scripts and test tools |
 | `docs/` | User documentation |
 | `scripts/release/`, `packaging/` | Go release build, installer test, Homebrew template |
 | `scripts/runtimes/`, `runtimes/kokoro/` | Runtime release scripts and the Kokoro runtime, on Bun. See below |
 
 ## Build, run and test
 
-The Go module is in `go/`; run these from there.
+The Go module is at the top of the repository; run these from there.
 
 ```sh
-cd go
 go build -o local-base ./cmd/localbase          # one static binary, UI included
 scripts/build.sh dist/local-base                  # the reproducible release build, stamped
 ./local-base --root /path/to/root serve --port 26410 --runtime-port-base 26411
@@ -111,9 +110,9 @@ sequenceDiagram
 
 The TypeScript gateway is retired. Its 0.1.0 binary, on the v0.1.0 release, is the rollback, so data directories stay compatible with it: the migrations are pinned as 0.1.0's set (`TestMigrationsAreTheV010Set`), and a new migration needs a release that drops that rollback, with a changelog line. The golden test data was recorded from the TypeScript code and is now Go's own. [The retirement plan](docs/typescript-retirement.md) records how it was done and the rollback rule.
 
-- **The catalog's source** is `go/internal/catalog/data`. `cd go && go run ./tools/catalog-feed` writes `catalog/feed.json` and `catalog/feed-v2.json` from it.
-- **The managed runtime manifest** is `go/internal/runtime/managed-runtime-manifest.json`. The binary embeds it, and the runtime sync workflows update it.
-- **Bun remains** for the runtime release scripts in `scripts/runtimes/`, the Kokoro runtime in `runtimes/kokoro/` and the page-script tests in `go/tools/jstest/`. go.yml's `bun-scripts` and `jstest` jobs run their tests.
+- **The catalog's source** is `internal/catalog/data`. `go run ./tools/catalog-feed` writes `catalog/feed.json` and `catalog/feed-v2.json` from it.
+- **The managed runtime manifest** is `internal/runtime/managed-runtime-manifest.json`. The binary embeds it, and the runtime sync workflows update it.
+- **Bun remains** for the runtime release scripts in `scripts/runtimes/`, the Kokoro runtime in `runtimes/kokoro/` and the page-script tests in `tools/jstest/`. go.yml's `bun-scripts` and `jstest` jobs run their tests.
 
 ## CI
 
@@ -121,7 +120,7 @@ The TypeScript gateway is retired. Its 0.1.0 binary, on the v0.1.0 release, is t
 | --- | --- |
 | `go.yml` | Format, vet, race tests (internal/backup in shards), CSS check, the contract and system suites, and the page-script and Bun script tests, as parallel jobs on Linux and macOS; `go-checks` passes only when all of them do |
 | `repo-guards.yml` | Binaries, large files, action pins, permissions and secrets scan |
-| `go-lint.yml` | golangci-lint with `go/.golangci.yml` |
+| `go-lint.yml` | golangci-lint with `.golangci.yml` |
 | `contributor-setup.yml` | `make bootstrap`, `check`, `ui`, `lint` and `build` from a fresh Linux checkout, when the setup changes |
 | `soak.yml` | One soak cycle nightly on Linux and macOS, and the 30-minute soak plus a race-detector cycle weekly |
 | `release-go.yml` | Release build, installer test on four platforms. Publishes a draft on tags only |

@@ -59,7 +59,7 @@ func TestRunCheckpointsStayOutOfBundles(t *testing.T) {
 	if list == nil || strings.Contains(" "+string(list[1])+" ", " runs ") {
 		t.Errorf("shadow.sh copy list: %q", list)
 	}
-	// The scripts live in go/scripts and go/tools (step 7 moved the glue to go/scripts). Fewer than
+	// The scripts live in scripts and tools (step 7 moved the glue to scripts). Fewer than
 	// minToolScripts means a directory stopped being read.
 	const minToolScripts = 20
 	var tools []string
@@ -71,7 +71,7 @@ func TestRunCheckpointsStayOutOfBundles(t *testing.T) {
 		tools = append(tools, found...)
 	}
 	if len(tools) < minToolScripts {
-		t.Fatalf("%d scripts in go/tools and go/scripts to check, fewer than %d", len(tools), minToolScripts)
+		t.Fatalf("%d scripts in tools and scripts to check, fewer than %d", len(tools), minToolScripts)
 	}
 	whole := regexp.MustCompile(`(cp|rsync|ditto)[^\n]*"\$(src|root|LOCALBASE_ROOT)"/?["\s]`)
 	for _, p := range tools {

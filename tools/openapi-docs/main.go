@@ -2,7 +2,7 @@
 // anything the document doesn't. Everything is sorted and nothing depends on when it runs, so the
 // same document always gives the same bytes, and CI can compare them.
 //
-//	go run ./tools/openapi-docs          # from go/: write the page
+//	go run ./tools/openapi-docs          # write the page
 //	go run ./tools/openapi-docs -check   # say whether it is current
 package main
 
@@ -323,7 +323,7 @@ func render(raw []byte) ([]byte, error) {
 
 	var b bytes.Buffer
 	b.WriteString("# API reference\n\n")
-	fmt.Fprintf(&b, "<!-- Generated from go/%s. Do not edit this page: change the document, then run `%s` from go/. -->\n\n", documentPath, regenerate)
+	fmt.Fprintf(&b, "<!-- Generated from %s. Do not edit this page: change the document, then run `%s`. -->\n\n", documentPath, regenerate)
 	if text := strings.TrimSpace(str(asObject(root["info"]), "description")); text != "" {
 		b.WriteString(text + "\n\n")
 	}

@@ -67,8 +67,8 @@ func scan(fsys fs.FS) (map[string][]string, error) {
 	return found, err
 }
 
-// trees are what the guard reads: go/tools, go/test, where step 7 moved the test suites and their
-// scripts, and go/scripts, where it moved the shell glue. A move from one to another changes neither
+// trees are what the guard reads: tools, test, where step 7 moved the test suites and their
+// scripts, and scripts, where it moved the shell glue. A move from one to another changes neither
 // what is read nor how much. Findings are named from the go directory: tools/..., test/... or
 // scripts/....
 var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}, {Label: "scripts", Dir: "../../../scripts"}}
@@ -77,20 +77,21 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive. Lowered from 207 by step 7's R3b, which deleted six of the files it read: tools/integration's
 // audit.go, behind.go, main.go, main_test.go and rerere-env.sh, and test/system/dual_differences_test.go.
-// Raised to 203 by M0b's scripts/unit-packages.sh.
-const minRead = 203
+// Set at the root move (M1) to what it reads, the repository's scripts/ included.
+const minRead = 256
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
 // other file may join. Lower a number, or remove a line, as they are fixed.
 var known = map[string]int{
 	"tools/rehearsal.sh":              1, // the scratch root's own label; it refuses the live one
 	"tools/upgrade-rehearsal/main.go": 2, // a scratch root's service, one line per platform; it checks the label against the live ones first
+	"scripts/install.sh":              1, // read since the root move: a printed hint ("apply the upgrade with: local-base restart"), not a command it runs
 }
 
 func TestNothingStopsAProcessByNameOrAServiceOrWithoutARoot(t *testing.T) {
 	var found map[string][]string
 	if other := os.Getenv("LOCALBASE_KILL_GUARD_TREE"); other != "" {
-		found = treewalk.WalkTrees(t, []treewalk.Tree{{Label: "tools", Dir: other}}, 0, filter, findings) // laid out as go/tools is
+		found = treewalk.WalkTrees(t, []treewalk.Tree{{Label: "tools", Dir: other}}, 0, filter, findings) // laid out as tools is
 	} else {
 		found = treewalk.WalkTrees(t, trees, minRead, filter, findings)
 	}

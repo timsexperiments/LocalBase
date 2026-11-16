@@ -4,7 +4,7 @@
 
 ## Blockers
 
-- [ ] The maintainer signs off #403, and it's squash-merged. See `go/docs/merge-readiness.md`.
+- [ ] The maintainer signs off #403, and it's squash-merged. See `docs/internals/merge-readiness.md`.
 - [ ] The stack on top is merged: #404, #413-#417 and this PR, and the backend fixes #405, #406, #409 and #411.
 - [ ] Transcription default decided: English, or auto-detect on multilingual models.
 - [ ] The pinned goldens green: go.yml's contract (linux/amd64) and macos-contract jobs. (Until step 7 this was `go-dual`.)
@@ -16,9 +16,9 @@ Drafted for the owner; the recommendations are proposals, not decisions.
 
 | Decision | Options | Recommended |
 | --- | --- | --- |
-| **Disclosure** of the 0.1.0 issue in `go/docs/merge-readiness.md` §4 | A security advisory and docs; docs only; or patch 0.1.0 first. Publish now or with 0.2.0 | An advisory and docs, published with 0.2.0 at the latest |
+| **Disclosure** of the 0.1.0 issue in `docs/internals/merge-readiness.md` §4 | A security advisory and docs; docs only; or patch 0.1.0 first. Publish now or with 0.2.0 | An advisory and docs, published with 0.2.0 at the latest |
 | **Identity cleanup** | Support purge of closed PR refs; also rewrite `main`; or accept the address on `main` | Support purge, accept the address on `main`, and fix account settings before squashing #403 |
-| **Memory reserve default** | Keep 15%, at least 8 GiB, which stops any model loading on an 8 GiB Mac; or change it, such as 10%, at least 3 GiB. See `go/docs/memory-reserve.md` | 10%, at least 3 GiB, **after** a check on a real 8 or 16 GiB Mac. Otherwise keep today's and say so in the README |
+| **Memory reserve default** | Keep 15%, at least 8 GiB, which stops any model loading on an 8 GiB Mac; or change it, such as 10%, at least 3 GiB. See `docs/internals/memory-reserve.md` | 10%, at least 3 GiB, **after** a check on a real 8 or 16 GiB Mac. Otherwise keep today's and say so in the README |
 | **Speech marking and C2PA** | Marking on, no C2PA, as today; pass C2PA through; or marking off by default | Keep marking on. Leave C2PA for later |
 | **Transcription language default** | English, as 0.1.0 does; or auto-detect on multilingual models | Auto-detect on multilingual models |
 | **DCO** | No sign-off, inbound = outbound, as drafted; or require sign-off and enforce it in CI | No sign-off |
@@ -33,10 +33,10 @@ Docs merge after what they describe. Arrows are stacks; each PR merges after the
 
 | Order | PRs |
 | --- | --- |
-| 1 | #403, then #411 and #421, as `go/docs/merge-readiness.md` says |
+| 1 | #403, then #411 and #421, as `docs/internals/merge-readiness.md` says |
 | 2 | #404, #408, #444. #444's lint job skips until #456 brings its config |
 | 3 | #413 → #414 → #415 → #416 → #417 → #418. #414's commit and date stamping needs #406 |
-| 4 | Go features: #421, #405 → #409 → #424, #423, #425, #426, #427, #430, #406, #422, #432, #447, #456. #424 and #406 both change the same line in `go/cmd/localbase/serve.go`, so whichever goes second needs a small conflict fix |
+| 4 | Go features: #421, #405 → #409 → #424, #423, #425, #426, #427, #430, #406, #422, #432, #447, #456. #424 and #406 both change the same line in `cmd/localbase/serve.go`, so whichever goes second needs a small conflict fix |
 | 5 | Feature docs, each after its feature: #436 (#409), #437 (#424), #438 (#426), #439 (#411), #440 (#423), #441 (#430), #442 (#425), #443 (#427) |
 | 6 | UI v2: #410, then #448 directly after it, then the rest of its stack. #418 must already be in, because it allowlists the fonts and icons and annotates their license |
 | 7 | #446, last, because it links to all of the feature docs |
@@ -79,7 +79,7 @@ From a clean, up-to-date `main`:
 ```sh
 git switch main && git pull --ff-only
 gh run list --branch main --limit 5                # everything green
-go/scripts/build.sh /tmp/lb-check && /tmp/lb-check version
+scripts/build.sh /tmp/lb-check && /tmp/lb-check version
 git tag -a v0.2.0 -m "LocalBase 0.2.0"
 git push origin v0.2.0
 gh run watch "$(gh run list --workflow release-go.yml --limit 1 --json databaseId -q '.[0].databaseId')"

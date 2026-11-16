@@ -104,8 +104,8 @@ const (
 )
 
 // TestNoProductionImports keeps test code out of the product: no non-test .go file outside
-// go/test and go/tools imports a package under go/test (the harness and fsguard; test/lab after
-// step 7's R4). Every package under go/test registers test flags or writes only to scratch, so
+// test and tools imports a package under test (the harness and fsguard; test/lab after
+// step 7's R4). Every package under test registers test flags or writes only to scratch, so
 // none belongs in a binary. The walk fails below its floors, so one that reads nothing can't pass.
 func TestNoProductionImports(t *testing.T) {
 	goDir := testutil.ModuleRoot(t)

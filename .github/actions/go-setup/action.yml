@@ -1,6 +1,6 @@
 name: Go setup
 description: >-
-  Go from go/go.mod, and the build and module caches restored from the newest save on main for this
+  Go from go.mod, and the build and module caches restored from the newest save on main for this
   runner, Go version and go.sum. Only go.yml's unit jobs save, on a push to main.
 outputs:
   key:
@@ -16,17 +16,16 @@ runs:
       id: go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: go/go.mod
+        go-version-file: go.mod
         # Its own cache is keyed on go.sum alone and never saved again once that key exists, so it
         # holds the build from whenever go.sum last changed. The steps below replace it.
         cache: false
     - name: Cache key and paths
       id: keys
       shell: bash
-      working-directory: go
       env:
         GO_VERSION: ${{ steps.go.outputs.go-version }}
-        SUM: ${{ hashFiles('go/go.sum') }}
+        SUM: ${{ hashFiles('go.sum') }}
       run: |
         prefix="go-${RUNNER_OS}-${RUNNER_ARCH}-${GO_VERSION}-${SUM}-"
         {

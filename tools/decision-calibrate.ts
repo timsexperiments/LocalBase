@@ -5,7 +5,7 @@
 //
 //   LOCALBASE_CALIBRATE_URL=http://127.0.0.1:<port> \
 //   LOCALBASE_CALIBRATE_MODEL=clef-flash-q4_k_m \
-//     bun run go/tools/decision-calibrate.ts [out.json]
+//     bun run tools/decision-calibrate.ts [out.json]
 //
 // LOCALBASE_CALIBRATE_KEY is optional (a --no-auth gateway needs none). Stops
 // if the gateway reports under 8 GiB of memory available.

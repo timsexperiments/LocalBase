@@ -1,10 +1,10 @@
 // Fixtures frozen from the TypeScript UI the Go page scripts were ported from.
 //
 // Each parity test once ran the Go module and the TS function on the same inputs and compared them.
-// The TS UI is retired, so go/tools/golden/jstest-parity.ts ran its side once, over the same inputs
+// The TS UI is retired, so tools/golden/jstest-parity.ts ran its side once, over the same inputs
 // (the *.cases.ts files here), and wrote the outputs to ../testdata/*.json. The tests now compare the
 // Go module's output with those. The fixtures are reviewed by hand from then on, like the outputs of
-// the other go/tools/golden scripts: a change to one is a change to what the Go page does.
+// the other tools/golden scripts: a change to one is a change to what the Go page does.
 
 import { readFileSync } from "fs";
 

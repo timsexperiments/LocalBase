@@ -3,7 +3,7 @@
 # axe-core in desktop Chrome (headless) against a running LocalBase UI
 # (DESIGN §17.9): chat, the model picker, the history drawer, generation
 # controls, Admin, the Lab and the other pages, at 1280 and 390 px, light
-# and dark. The pinned axe-core is cached in go/.cache, verified by sha256,
+# and dark. The pinned axe-core is cached in .cache, verified by sha256,
 # and injected over the DevTools protocol only for the test.
 #   test/browser/axe-check.sh http://127.0.0.1:<port>   (a --no-auth gateway)
 #   AXE_COOKIE=name=value test/browser/axe-check.sh ...  (a gateway with sign-in on, as that session)

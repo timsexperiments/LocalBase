@@ -1,5 +1,5 @@
 // Package fsguard is the write guard of the black-box suites and their harness
-// (go/test/harness). It keeps one list of scratch roots for the whole test binary, so a gateway
+// (test/harness). It keeps one list of scratch roots for the whole test binary, so a gateway
 // root the harness registers is writable by the tests that use it.
 //
 // The plain-named writes (WriteFile, Create, Append, OpenRW, MkdirAll, Chmod, Symlink,

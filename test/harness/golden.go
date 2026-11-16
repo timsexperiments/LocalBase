@@ -47,10 +47,10 @@ func FixedHostJSON() string { return goldenPlatforms[goruntime.GOOS+"/"+goruntim
 func GoldenDir() string { return goruntime.GOOS + "-" + goruntime.GOARCH }
 
 // Pins starts a pinned test. It skips where there are no goldens: another platform (a platform
-// absence, named in go/test/contract), or real backends on PATH.
+// absence, named in test/contract), or real backends on PATH.
 func Pins(t *testing.T) {
 	t.Helper()
-	// A platform absence (platformAbsences in go/test/contract).
+	// A platform absence (platformAbsences in test/contract).
 	if goldenPlatforms[goruntime.GOOS+"/"+goruntime.GOARCH] == "" {
 		t.Skipf("pins Go's results: the goldens are darwin/arm64's and linux/amd64's; %s/%s would need goldens of its own", goruntime.GOOS, goruntime.GOARCH)
 	}

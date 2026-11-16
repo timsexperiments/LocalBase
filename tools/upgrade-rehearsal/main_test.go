@@ -245,7 +245,7 @@ func testPorts(t *testing.T) portSet {
 	return portSet{got[0], got[1], got[2], got[3]}
 }
 
-// goDir moves to go/, where the kit's builds run.
+// goDir moves to the module's directory, where the kit's builds run.
 func goDir(t *testing.T) {
 	t.Helper()
 	wd, err := os.Getwd()

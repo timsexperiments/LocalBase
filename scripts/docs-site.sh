@@ -49,7 +49,7 @@ root_page SECURITY.md security-policy.md
 # The quickstart is the README's section, so the two can't drift apart.
 {
   awk '/^## Quickstart/ { on = 1; print "# Quickstart"; next } on && /^### |^## / { exit } on { print }' "$repo/README.md"
-} | /usr/bin/env perl -pe 's{\]\(docs/}{](}g; s{\]\(go/}{]('"$blob"'/go/}g' > "$source/quickstart.md"
+} | /usr/bin/env perl -pe 's{\]\(docs/}{](}g; s{\]\((cmd|internal|test|tools)/}{]('"$blob"'/$1/}g' > "$source/quickstart.md"
 
 # Links that leave the site, and the pages that moved.
 for page in "$source"/*.md; do
@@ -57,8 +57,9 @@ for page in "$source"/*.md; do
     s{\]\(\.\./README\.md(#[^)]*)?\)}{]($ENV{BLOB}/README.md$1)}g;
     s{\]\(README\.md(#[^)]*)?\)}{]($ENV{BLOB}/README.md$1)}g;
     s{\]\(\.\./THIRD_PARTY_NOTICES\.md\)}{]($ENV{BLOB}/THIRD_PARTY_NOTICES.md)}g;
-    s{\]\(\.\./(go|packaging|scripts|src|\.github)/}{]($ENV{BLOB}/$1/}g;
-    s{\]\((go|packaging|scripts|src|\.github|LICENSE|REUSE\.toml)(/|\))}{]($ENV{BLOB}/$1$2}g;
+    s{\]\(\.\./(cmd|internal|test|tools|packaging|scripts|\.github)/}{]($ENV{BLOB}/$1/}g;
+    s{\]\((?:\.\./)?(internals/|DESIGN\.md)}{]($ENV{BLOB}/docs/$1}g;
+    s{\]\((cmd|internal|test|tools|packaging|scripts|\.github|LICENSE|REUSE\.toml)(/|\))}{]($ENV{BLOB}/$1$2}g;
     s{\]\(CONTRIBUTING\.md}{](contributing.md}g;
     s{\]\(DEVELOPMENT\.md}{](development.md}g;
     s{\]\(ROADMAP\.md}{](roadmap.md}g;

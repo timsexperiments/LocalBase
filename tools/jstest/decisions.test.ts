@@ -1,6 +1,6 @@
 // Decisions: the words for an answer, its request, and the batch export.
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { describe, expect, test } from "bun:test";
 import { BANDS, BAND_NOTES, band, batchCSV, buildRequest, csvCell, curlSnippet, jsSnippet, needsReview, percent, problem, readAnswer, situations } from "../../internal/web/static/js/decision-read.js";
 

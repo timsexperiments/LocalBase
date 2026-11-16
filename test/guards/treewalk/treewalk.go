@@ -4,8 +4,8 @@
 // and fails a guard that read fewer files than its floor, so a tree that moves out of reach fails
 // the guard rather than passing it on less.
 //
-// It is for tests. No file outside go/test and go/tools may import it, which
-// TestNoProductionImports in go/test/harness checks for every package under go/test.
+// It is for tests. No file outside test and tools may import it, which
+// TestNoProductionImports in test/harness checks for every package under test.
 package treewalk
 
 import (
@@ -19,7 +19,7 @@ import (
 )
 
 // Tree is one directory a guard reads, and the label its findings are named with, such as
-// "tools" for go/tools.
+// "tools" for tools.
 type Tree struct{ Label, Dir string }
 
 // Filter says which files a guard reads.
@@ -95,7 +95,7 @@ func WalkTrees(t testing.TB, trees []Tree, floor int, f Filter, rule func(text s
 			found[tr.Label+"/"+name] = lines
 		}
 		read += n
-		where = append(where, "go/"+tr.Label)
+		where = append(where, tr.Label)
 	}
 	if floor > 0 && read < floor {
 		t.Errorf("%s", FloorMessage(read, floor, where))

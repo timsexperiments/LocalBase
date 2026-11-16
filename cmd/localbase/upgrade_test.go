@@ -106,7 +106,7 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 // leaving it to check nothing.
 func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 	repo := testutil.RepoRoot(t)
-	// The module's scripts, by their path from the repository's top (go/scripts/... while the
+	// The module's scripts, by their path from the repository's top (scripts/... while the
 	// module is in go/, scripts/... at the top), as the release workflow names them.
 	module, err := filepath.Rel(repo, testutil.ModuleRoot(t))
 	if err != nil {

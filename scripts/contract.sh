@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs the contract suite (go/test/contract and go/test/system) and keeps the evidence of a failing run: the full
+# Runs the contract suite (test/contract and test/system) and keeps the evidence of a failing run: the full
 # `go test -json` stream is written to a timestamped file, kept (and its path
 # printed) when the run fails, and removed when it passes. A failure without
 # output then still leaves its events behind.

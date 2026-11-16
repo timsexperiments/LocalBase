@@ -5,7 +5,7 @@
 # Prints the unit list: every package in the module but the suites that run in jobs of their own
 # (internal/backup, test/contract, test/system, test/chaos, test/lab and tools/soak). The filter
 # names each suite by its place in the module, not by the module's path, so it holds wherever the
-# module sits (go/ today, the top after the move).
+# module sits (go/ until the root move, the top since).
 #
 # It then checks its own answer another way: go list names those suites' import paths from their
 # directories, and one still in the list fails the run, as does an empty list. So a filter that

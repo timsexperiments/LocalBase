@@ -1,7 +1,7 @@
 // The chat page sends an attached image itself, as a data: URL, which is the
 // only form the gateway accepts.
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { expect, test } from "bun:test";
 import { readAttachments } from "../../internal/web/static/js/attachments.js";
 import { messageToChat } from "../../internal/web/static/js/chat-core.js";

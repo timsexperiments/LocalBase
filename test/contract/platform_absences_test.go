@@ -19,7 +19,7 @@ import (
 var platformAbsences = map[string]struct{ absentOn, why, ranBy string }{
 	"Pins": {
 		absentOn: "every platform but darwin/arm64 and linux/amd64 (Intel Macs, Linux on arm64, Windows)",
-		why:      "the pinned tests' goldens are per platform: it changes the catalog's targets, doctor's placement and the service manager (go/test/harness/golden.go)",
+		why:      "the pinned tests' goldens are per platform: it changes the catalog's targets, doctor's placement and the service manager (test/harness/golden.go)",
 		ranBy:    "go.yml contract (ubuntu-latest, linux/amd64) on every PR, and go.yml macos-contract (macos-15, Apple Silicon)",
 	},
 	"TestRetrySemanticsFake": {
@@ -70,7 +70,7 @@ func skipsIn(t *testing.T, pattern string) (int, map[string]string) {
 }
 
 // Floors for TestPlatformAbsencesAreNamed: what the globs read now (15 test files here, 47 in
-// go/test/system, and 8 files in go/test/harness and its fsguard, at step 7's R3).
+// test/system, and 8 files in test/harness and its fsguard, at step 7's R3).
 const (
 	minAbsenceOwnFiles     = 15
 	minAbsenceSystemFiles  = 47
@@ -105,7 +105,7 @@ func TestPlatformAbsencesAreNamed(t *testing.T) {
 		maps.Copy(found, more)
 	}
 	if own < minAbsenceOwnFiles || system < minAbsenceSystemFiles || harnessFiles < minAbsenceHarnessFiles {
-		t.Fatalf("read %d test files here, %d in go/test/system and %d harness files, under the floors (%d, %d, %d)",
+		t.Fatalf("read %d test files here, %d in test/system and %d harness files, under the floors (%d, %d, %d)",
 			own, system, harnessFiles, minAbsenceOwnFiles, minAbsenceSystemFiles, minAbsenceHarnessFiles)
 	}
 	for name, where := range found {

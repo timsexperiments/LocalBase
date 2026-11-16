@@ -4,10 +4,11 @@ node_modules/
 # Build output. CI rejects these if they are ever committed.
 dist/
 /release/
-go/dist/
-go/fakebackend
-go/localbase
-go/local-base
+# Binaries `go build` and `make build` leave at the top. Anchored: unanchored, localbase would
+# also ignore cmd/localbase/ and fakebackend internal/runtime/fakebackend/.
+/fakebackend
+/localbase
+/local-base
 
 # Local research, scratch data and model files
 .design/

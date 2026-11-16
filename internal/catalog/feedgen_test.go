@@ -28,7 +28,7 @@ func TestPublishedFeedsAreCurrent(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(got, c.want) {
-			t.Errorf("%s is out of date; run `cd go && go run ./tools/catalog-feed`", c.rel)
+			t.Errorf("%s is out of date; run `go run ./tools/catalog-feed`", c.rel)
 		}
 	}
 }

@@ -1,7 +1,7 @@
 // The Go UI's attachments against the TS attachments.ts they were ported from, frozen as fixtures
 // (parity/frozen.ts; testdata/attachments.json).
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { describe, expect, test } from "bun:test";
 import * as go from "../../internal/web/static/js/attachments.js";
 import { acceptModels, conversationChecks, conversations, readAttachments, readCases } from "./parity/attachments.cases.ts";

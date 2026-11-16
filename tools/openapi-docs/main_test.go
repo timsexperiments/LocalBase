@@ -38,7 +38,7 @@ func TestPageIsCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(current, theRender(t, theDocument(t))) {
-		t.Fatalf("docs/api-reference.md is not what the OpenAPI document gives. From go/, run: %s", regenerate)
+		t.Fatalf("docs/api-reference.md is not what the OpenAPI document gives. Run: %s", regenerate)
 	}
 }
 

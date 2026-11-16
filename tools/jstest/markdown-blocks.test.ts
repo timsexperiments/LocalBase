@@ -1,7 +1,7 @@
 // Chat replies with real newlines parse into blocks (no React needed; the
 // reference comparison is markdown.test.ts).
 //
-//   bun test go/tools/jstest/markdown-blocks.test.ts
+//   bun test tools/jstest/markdown-blocks.test.ts
 import { describe, expect, test } from "bun:test";
 import { parse } from "../../internal/web/static/js/markdown.js";
 

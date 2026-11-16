@@ -102,7 +102,7 @@ func TestWalkTreesFailsBelowItsFloor(t *testing.T) {
 			t.Errorf("floor %d: found %q", c.floor, names)
 		}
 	}
-	if got := FloorMessage(3, 9, []string{"go/tools", "go/test"}); !strings.Contains(got, "read 3 files in go/tools and go/test, fewer than the 9") {
+	if got := FloorMessage(3, 9, []string{"tools", "test"}); !strings.Contains(got, "read 3 files in tools and test, fewer than the 9") {
 		t.Errorf("message %q", got)
 	}
 }

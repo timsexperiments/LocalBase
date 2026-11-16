@@ -3,7 +3,7 @@
 // scripted gateway, with deterministic ids and blob URLs, and must send the same requests and produce
 // the same results.
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { afterEach, describe, expect, test } from "bun:test";
 import * as go from "../../internal/web/static/js/tools.js";
 import * as c from "./parity/tools.cases.ts";

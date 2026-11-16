@@ -1,7 +1,7 @@
 // Search's pure parts (DESIGN §35): splitting text into passages, ranking by cosine, and reading
 // passages in batches with the retries §35.2 and §35.3 ask for. No page, no network.
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { describe, expect, test } from "bun:test";
 import { LIMITS, batches, capPassages, closest, cosine, marks, rank, readFrom, splitText, type EmbedError } from "../../internal/web/static/js/search-core.js";
 

@@ -1,6 +1,6 @@
 // The detached-runs client's event-stream parser.
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { afterAll, describe, expect, test } from "bun:test";
 import { sseParser } from "../../internal/web/static/js/runs.js";
 

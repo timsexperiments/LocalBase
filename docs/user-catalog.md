@@ -8,7 +8,7 @@ models, or adjust built-in ones, without rebuilding LocalBase.
 User entries live in `<root>/catalog.d/`, one JSON file per model. The default
 root is `~/.local/share/local-base`, or whatever `--root` or `LOCALBASE_ROOT`
 names. Each file uses the same schema as the built-in entries in
-`go/internal/catalog/data/`.
+`internal/catalog/data/`.
 
 Files are read in name order whenever LocalBase starts or a command runs.
 Reading the catalog never touches the network; the remote feed below is
@@ -119,7 +119,7 @@ except through `models feed refresh`.
 To publish your own feed, use the same document shape. Contributors
 regenerate both repository feeds, with annotations built from the catalog
 and the checked-in memory measurements, after editing
-`go/internal/catalog/data/` with `cd go && go run ./tools/catalog-feed`; a test
+`internal/catalog/data/` with `go run ./tools/catalog-feed`; a test
 fails while either is out of date.
 
 ## Same-id semantics: add or patch
@@ -192,7 +192,7 @@ it is a user entry like one added from Hugging Face:
   ids it wrote in `catalog.d/.former-built-ins` and never writes one again,
   so `local-base models remove-entry <id>` sticks.
 
-The specs ship in the binary from `go/internal/catalog/data/former/`.
+The specs ship in the binary from `internal/catalog/data/former/`.
 
 ## Adding a model from Hugging Face
 

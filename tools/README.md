@@ -4,7 +4,7 @@ Most scripts here say what they do at the top. This covers what the reliability 
 performance tools share. `docs/reliability.md` and `docs/performance.md` explain the tools
 themselves.
 
-| Run from `go/` | What it does |
+| Run from the repository's top | What it does |
 |---|---|
 | `make soak` (`scripts/soak.sh`) | A real gateway over fake backends, through memory phases, drain and restart |
 | `make chaos` (`test/chaos`) | What breaks, and what a person sees when it does |
@@ -109,3 +109,4 @@ or lower its count, when you do. A file may not gain one, and no other file may 
 |---|---|
 | Go thread | `contract.sh`: 1, `ios-check.sh`: 2, `otelcol-check.sh`: 1, `placement-rollback-check.sh`: 1, `rehearsal.sh`: 1, `shadow.sh`: 4, `systemd-check.sh`: 1, `tailwind.sh`: 1 |
 | Features thread | `upgrade-rehearsal-systemd.sh`: 1 |
+| OSS (read since the root move) | `bootstrap.sh`: 5, `check-repo-hygiene.test.sh`: 1, `check-signing-jobs.test.sh`: 1, `docs-site.sh`: 1, `install.sh`: 1, `release/build.sh`: 2, `release/generate-notices.sh`: 2, `release/rehearse.sh`: 1, `release/test-installer.sh`: 1, `runtimes/build-sd-server.ts`: 1, `runtimes/build-tts-server.ts`: 1, `runtimes/build-whisper.ts`: 1 |

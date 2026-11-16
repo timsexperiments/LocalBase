@@ -8,7 +8,7 @@ description = "Reviewed test fixtures"
 regexTarget = "match"
 # Each entry is one exact value with the reason above it, checked by
 # scripts/check-gitleaks-allowlist.sh. A new fixture secret should not need an entry:
-# generate it, or name it PLANTED_* (see go/tools/README.md).
+# generate it, or name it PLANTED_* (see tools/README.md).
 regexes = [
   # The AWS documentation-style key in the TypeScript log redaction test.
   '''AKIAABCDEFGHIJKLMNOP''',

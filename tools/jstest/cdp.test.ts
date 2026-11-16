@@ -1,7 +1,7 @@
 // The DevTools client the browser checks share (test/browser/cdp/cdp.ts), against a local WebSocket
 // server that plays Chrome's part.
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { afterEach, describe, expect, test } from "bun:test";
 import { connect, evaluate, openPage, type Message } from "../../test/browser/cdp/cdp.ts";
 

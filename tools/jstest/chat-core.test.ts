@@ -1,7 +1,7 @@
 // The Go UI's chat core against the TS UI functions it ports, frozen as fixtures
 // (parity/frozen.ts; testdata/chat-core.json).
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 //
 // Same inputs, same outputs: inline reasoning splitting under every
 // chunking, the request context, and device history in both directions.

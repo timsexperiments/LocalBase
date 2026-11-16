@@ -1,7 +1,7 @@
 // The Go UI's compaction and steering against the TS functions they port, frozen as fixtures
 // (parity/frozen.ts; testdata/compaction.json).
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { describe, expect, test } from "bun:test";
 import * as go from "../../internal/web/static/js/chat-core.js";
 import * as c from "./parity/compaction.cases.ts";

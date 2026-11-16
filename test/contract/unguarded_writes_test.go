@@ -10,7 +10,7 @@ import (
 )
 
 // Floors for TestNoUnguardedWrites: what the globs read now (15 test files here, 47 in
-// go/test/system and 6 harness files at step 7's R3). Fewer means a glob missed files it guards.
+// test/system and 6 harness files at step 7's R3). Fewer means a glob missed files it guards.
 const (
 	minGuardedOwnFiles     = 15
 	minGuardedSystemFiles  = 47
@@ -18,16 +18,16 @@ const (
 )
 
 // TestNoUnguardedWrites keeps every write in this package behind the guard:
-// only go/test/harness/fsguard may call the os write functions directly. It reads this
-// package's tests, go/test/system's (which left this package in step 7's R3) and the harness's
-// files (go/test/harness, fsguard aside), each with a floor.
+// only test/harness/fsguard may call the os write functions directly. It reads this
+// package's tests, test/system's (which left this package in step 7's R3) and the harness's
+// files (test/harness, fsguard aside), each with a floor.
 func TestNoUnguardedWrites(t *testing.T) {
 	files, _ := filepath.Glob("*_test.go")
 	root := testutil.ModuleRoot(t)
 	systemFiles, _ := filepath.Glob(filepath.Join(root, "test", "system", "*_test.go"))
 	harnessFiles, _ := filepath.Glob(filepath.Join(root, "test", "harness", "*.go"))
 	if len(files) < minGuardedOwnFiles || len(systemFiles) < minGuardedSystemFiles || len(harnessFiles) < minGuardedHarnessFiles {
-		t.Fatalf("read %d test files here, %d in go/test/system and %d harness files, under the floors (%d, %d, %d)",
+		t.Fatalf("read %d test files here, %d in test/system and %d harness files, under the floors (%d, %d, %d)",
 			len(files), len(systemFiles), len(harnessFiles), minGuardedOwnFiles, minGuardedSystemFiles, minGuardedHarnessFiles)
 	}
 	forbidden := []string{"os.WriteFile(", "os.Create(", "os.OpenFile(", "os.Symlink(", "os.Link(", ".Truncate(",
@@ -52,5 +52,5 @@ func TestNoUnguardedWrites(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("read %d test files here, %d in go/test/system and %d harness files", len(files), len(systemFiles), len(harnessFiles))
+	t.Logf("read %d test files here, %d in test/system and %d harness files", len(files), len(systemFiles), len(harnessFiles))
 }

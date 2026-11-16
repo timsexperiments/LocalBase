@@ -3,7 +3,7 @@
 # local-base binary as a systemd user service inside a disposable Debian
 # container with systemd as PID 1, then removes the container and image.
 #
-#   test/platform/systemd-check.sh            # from go/, needs Docker
+#   test/platform/systemd-check.sh            # from the repository's top, needs Docker
 #
 # Inside the container, as a non-root user with lingering enabled, on a
 # scratch root (so a scratch unit label): start, status, the installed unit

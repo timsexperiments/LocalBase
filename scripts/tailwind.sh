@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds internal/web/static/app.css with the pinned Tailwind standalone CLI.
-# No Node or npm. The CLI is cached in go/.cache and verified by sha256.
+# No Node or npm. The CLI is cached in .cache and verified by sha256.
 #   scripts/tailwind.sh          build
 #   scripts/tailwind.sh --check  build, then fail if app.css changed (CI)
 set -eu
@@ -24,7 +24,7 @@ if [ ! -x "$bin" ]; then
   chmod +x "$bin.tmp" && mv "$bin.tmp" "$bin"
 fi
 # Tailwind finds class names relative to the working directory: build from
-# go/ so the result does not depend on where the script is run.
+# the module's top so the result does not depend on where the script is run.
 cd "$here"
 out="$here/internal/web/static/app.css"
 before=$(shasum -a 256 < "$out" 2>/dev/null || true)

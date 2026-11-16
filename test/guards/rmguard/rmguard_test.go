@@ -4,7 +4,7 @@
 //	go test -count=1 ./test/guards/rmguard
 //
 // LOCALBASE_RM_GUARD_DIRS adds directories of command files, separated by colons, and
-// LOCALBASE_RM_GUARD_TREE scans another checkout's go/tools instead of this one, reporting
+// LOCALBASE_RM_GUARD_TREE scans another checkout's tools instead of this one, reporting
 // only what is not on the list below. It reads files, so it cannot see a command typed
 // straight into a shell.
 package rmguard
@@ -104,8 +104,8 @@ func scan(fsys fs.FS) (map[string][]string, error) {
 	return found, err
 }
 
-// trees are what the guard reads: go/tools, go/test, where step 7 moved the test suites and their
-// scripts, and go/scripts, where it moved the shell glue. A move from one to another changes neither
+// trees are what the guard reads: tools, test, where step 7 moved the test suites and their
+// scripts, and scripts, where it moved the shell glue. A move from one to another changes neither
 // what is read nor how much. Findings are named from the go directory: tools/..., test/... or
 // scripts/....
 var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}, {Label: "scripts", Dir: "../../../scripts"}}
@@ -114,10 +114,10 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive. Lowered from 112 by step 7's R3b, which deleted four of the files it read (tests aside):
 // tools/integration's audit.go, behind.go, main.go and rerere-env.sh.
-// Raised to 110 by M0b's scripts/unit-packages.sh.
-const minRead = 110
+// Set at the root move (M1) to what it reads, the repository's scripts/ included.
+const minRead = 162
 
-// scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as go/tools
+// scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as tools
 // is), and checks the floor only for the trees.
 func scanTrees(t *testing.T, other string) map[string][]string {
 	t.Helper()
@@ -140,6 +140,20 @@ var knownToDelete = map[string]int{
 	"test/platform/systemd-check.sh":       1,
 	"scripts/tailwind.sh":                  1,
 	"scripts/upgrade-rehearsal-systemd.sh": 1,
+	// Read since the root move put the module's scripts beside the repository's: each removes
+	// a temporary file or directory it made itself (mktemp, or a fixed build directory).
+	"scripts/bootstrap.sh":                 5,
+	"scripts/check-repo-hygiene.test.sh":   1,
+	"scripts/check-signing-jobs.test.sh":   1,
+	"scripts/docs-site.sh":                 1,
+	"scripts/install.sh":                   1,
+	"scripts/release/build.sh":             2,
+	"scripts/release/generate-notices.sh":  2,
+	"scripts/release/rehearse.sh":          1,
+	"scripts/release/test-installer.sh":    1,
+	"scripts/runtimes/build-sd-server.ts":  1,
+	"scripts/runtimes/build-tts-server.ts": 1,
+	"scripts/runtimes/build-whisper.ts":    1,
 }
 
 func TestNothingDeletesThroughAVariableOrOutsideScratch(t *testing.T) {

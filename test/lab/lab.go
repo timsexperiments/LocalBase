@@ -55,7 +55,7 @@ type Workspace struct {
 	Dir  string
 	Bin  string
 	Keep bool
-	// moduleDir is go/, where the builds run.
+	// moduleDir is the module's directory, where the builds run.
 	moduleDir string
 	ports     *portBlock
 }

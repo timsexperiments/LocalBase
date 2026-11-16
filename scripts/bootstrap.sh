@@ -31,7 +31,7 @@ die() {
 
 command -v git > /dev/null 2>&1 || die "install git first"
 # A full contributor setup needs Go; fetching named tools, as CI does, doesn't.
-[ $# -gt 0 ] || command -v go > /dev/null 2>&1 || die "install Go 1.21 or newer first: https://go.dev/dl/ (it fetches the exact toolchain in go/go.mod by itself)"
+[ $# -gt 0 ] || command -v go > /dev/null 2>&1 || die "install Go 1.21 or newer first: https://go.dev/dl/ (it fetches the exact toolchain in go.mod by itself)"
 
 case "$(uname -s)" in
   Darwin) os=darwin ;;

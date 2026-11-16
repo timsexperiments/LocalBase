@@ -1,7 +1,7 @@
 // The Go UI's dictation helpers against the TS dictation.tsx and dictation-audio.ts they were ported
 // from, frozen as fixtures (parity/frozen.ts; testdata/dictation.json).
 //
-//   bun test go/tools/jstest
+//   bun test tools/jstest
 import { describe, expect, test } from "bun:test";
 import * as go from "../../internal/web/static/js/dictation.js";
 import { appends, bytes, refused, wavs } from "./parity/dictation.cases.ts";

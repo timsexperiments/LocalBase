@@ -1,6 +1,6 @@
 // Chat logic without the DOM, ported from the TS UI (src/ui/reasoning.ts,
 // client.ts, compaction.ts, attachments.ts) so conversations and requests
-// stay identical across the two implementations. go/tools/jstest checks it
+// stay identical across the two implementations. tools/jstest checks it
 // against the TS functions.
 
 // --- reasoning -------------------------------------------------------------------

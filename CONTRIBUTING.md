@@ -1,12 +1,12 @@
 # Contributing to LocalBase
 
-Thanks for helping. New work goes in [`go/`](go/). [DEVELOPMENT.md](DEVELOPMENT.md) explains how the code fits together.
+Thanks for helping. New work goes in the Go module at the top of the repository (`cmd/`, `internal/`, `test/`, `tools/`). [DEVELOPMENT.md](DEVELOPMENT.md) explains how the code fits together.
 
 Bug fixes and docs are welcome straight away. For a larger change, open an issue first so we can agree the approach before you spend time on it.
 
 ## Set up
 
-You need git and Go 1.21 or newer, which fetches the exact toolchain in [`go/go.mod`](go/go.mod) by itself. The Makefile uses that toolchain's `gofmt`, because an older one on your `PATH` can disagree with CI. [Bun](https://bun.sh) is needed only for `make ui`, using the version in `package.json`. No GPU, models or runtimes are needed for the normal tests.
+You need git and Go 1.21 or newer, which fetches the exact toolchain in [`go.mod`](go.mod) by itself. The Makefile uses that toolchain's `gofmt`, because an older one on your `PATH` can disagree with CI. [Bun](https://bun.sh) is needed only for `make ui`, using the version in `package.json`. No GPU, models or runtimes are needed for the normal tests.
 
 ```sh
 git clone https://github.com/timsexperiments/LocalBase.git
@@ -23,7 +23,7 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 | Command | What it does |
 | --- | --- |
 | `make bootstrap` | Install the pinned tools into `.cache/tools` |
-| `make build` | Build `go/local-base` |
+| `make build` | Build `local-base` |
 | `make run` | Run a gateway on a throwaway root in `.scratch/` (`PORT=26400` by default, runtimes on 26410-26414) |
 | `make test` | Unit tests |
 | `make race` | Unit tests with the race detector, as CI runs them |
@@ -34,7 +34,7 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 | `make check` | Format, vet, repo guards and unit tests |
 | `make rehearse` | Rehearse a release from local artifacts. Publishes nothing |
 | `make docs` | Build the documentation site into `.cache/docs-site/book` |
-| `make soak-smoke` | One soak cycle against fake backends, about 2 minutes. `make soak` runs for 30 minutes and `make soak-race` adds the race detector. See `go/docs/reliability.md` |
+| `make soak-smoke` | One soak cycle against fake backends, about 2 minutes. `make soak` runs for 30 minutes and `make soak-race` adds the race detector. See `docs/internals/reliability.md` |
 
 `make hooks` optionally runs the fast checks before each commit.
 
@@ -42,9 +42,9 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 
 ## Linting
 
-CI runs golangci-lint v2.15.0 with `go/.golangci.yml`. To run it locally: `make bootstrap`, then `make lint`.
+CI runs golangci-lint v2.15.0 with `.golangci.yml`. To run it locally: `make bootstrap`, then `make lint`.
 
-`go/docs/lint-baseline.md` lists findings that haven't been reviewed. **It isn't a clean bill of health:** it includes real unchecked errors, and they're excluded rather than fixed. New code is still held to the rules. The one gap is a new call to a function already listed for that file, so don't rely on the linter to catch that.
+`docs/internals/lint-baseline.md` lists findings that haven't been reviewed. **It isn't a clean bill of health:** it includes real unchecked errors, and they're excluded rather than fixed. New code is still held to the rules. The one gap is a new call to a function already listed for that file, so don't rely on the linter to catch that.
 
 ## Never touch a real install
 
@@ -78,26 +78,26 @@ Existing data directories must keep working, and a rollback must stay a binary s
 
 The built-in catalog is deliberately small: models tested on real hardware, with one chat model per memory band and one model per job. Please [request a model](.github/ISSUE_TEMPLATE/model_request.yml) before doing the work, because a maintainer has to approve catalog changes. Anyone can already use other models through imports or [their own catalog entries](docs/user-catalog.md).
 
-1. Add a JSON file under `go/internal/catalog/data/<kind>/` and list it in `go/internal/catalog/data/order.txt`. The order breaks recommendation ties.
-2. Run `go run ./tools/catalog-feed` from `go/`. It regenerates the published feeds, `catalog/feed.json` and `catalog/feed-v2.json`.
+1. Add a JSON file under `internal/catalog/data/<kind>/` and list it in `internal/catalog/data/order.txt`. The order breaks recommendation ties.
+2. Run `go run ./tools/catalog-feed`. It regenerates the published feeds, `catalog/feed.json` and `catalog/feed-v2.json`.
 3. Use facts only: license, revision, sizes, hashes, context window and tasks. No quality claims or benchmark rankings. Memory figures must state whether they're measured or estimated.
 4. Run `make test`.
 
 ### Add an API route
 
-1. Add it to `routeTable` in `go/internal/gateway/routes.go`, with `guarded: true` and its `permission`: the table wraps the handler in `s.guard` and builds the mux from it. Permissions are listed in `go/internal/auth/auth.go`.
+1. Add it to `routeTable` in `internal/gateway/routes.go`, with `guarded: true` and its `permission`: the table wraps the handler in `s.guard` and builds the mux from it. Permissions are listed in `internal/auth/auth.go`.
 2. Errors use the OpenAI envelope. Transient failures are 503 or 429 with `Retry-After`; permanent ones are 4xx.
-3. If the browser needs it, give the route its `ui` methods in the same table (or `uiSub` for the paths under it). `allowedUIRoute` in `go/internal/gateway/ui_routes.go` reads them.
-4. Add a contract test in `go/test/contract/`, and list the route in [docs/api.md](docs/api.md).
+3. If the browser needs it, give the route its `ui` methods in the same table (or `uiSub` for the paths under it). `allowedUIRoute` in `internal/gateway/ui_routes.go` reads them.
+4. Add a contract test in `test/contract/`, and list the route in [docs/api.md](docs/api.md).
 
 ### Add a UI page
 
-1. Add a template in `go/internal/web/templates/` and a handler in `go/internal/web/`.
-2. Register it in `go/internal/web/web.go`: `u.need("<permission>", handler)` for reads, and `u.mutating("<permission>", handler)` for changes, which adds the CSRF check.
-3. If you changed Tailwind classes, run `go/scripts/tailwind.sh` and commit `app.css`.
-4. Add browser logic as small files in `go/internal/web/static/js/`, with tests in `go/tools/jstest/`. There's no Node or npm build. Product copy names no specific models.
+1. Add a template in `internal/web/templates/` and a handler in `internal/web/`.
+2. Register it in `internal/web/web.go`: `u.need("<permission>", handler)` for reads, and `u.mutating("<permission>", handler)` for changes, which adds the CSRF check.
+3. If you changed Tailwind classes, run `scripts/tailwind.sh` and commit `app.css`.
+4. Add browser logic as small files in `internal/web/static/js/`, with tests in `tools/jstest/`. There's no Node or npm build. Product copy names no specific models.
 
-To see pages with fixture data, run from `go/`:
+To see pages with fixture data, run:
 
 ```sh
 LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI
@@ -106,13 +106,13 @@ LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI
 ### Write a test
 
 - **Unit tests** live beside the code. Prefer real behaviour over mocks; fakes exist only at real boundaries, such as `internal/runtime/fakebackend`.
-- **Contract tests** in `go/test/contract/` drive a real gateway over HTTP on a scratch root. All writes go through `go/test/harness/fsguard`, and `TestNoUnguardedWrites` enforces that.
+- **Contract tests** in `test/contract/` drive a real gateway over HTTP on a scratch root. All writes go through `test/harness/fsguard`, and `TestNoUnguardedWrites` enforces that.
 - **Pinned tests** compared the Go and TypeScript gateways until TypeScript was retired; they now check Go's answers against goldens in `testdata/golden/<platform>/` (darwin-arm64 and linux-amd64), on the lab build with a fixed host. Record them again with `LOCALBASE_UPDATE_GOLDEN=1` when a change is intended, and say why in the PR.
 - **Real inference** is opt-in through `LOCALBASE_CONTRACT_*` variables and is never required for a PR.
 - **A test that sends more than a few thousand requests** goes through `testutil.Flood`, which keeps its connections and stops itself if it can't. Closed connections hold local ports that everything on the machine shares, so a flood that opens one per request can make other programs' connections fail.
 - **Goldens** in `testdata/` were recorded from the TypeScript code and are now Go's own. A change to one is a behaviour change: say why in the PR, and reviewers read the diff.
 
-For a parser of anything from outside, add a fuzz target to `go/scripts/fuzz.sh`. `go test` runs its seeds, and the script searches for new inputs on demand.
+For a parser of anything from outside, add a fuzz target to `scripts/fuzz.sh`. `go test` runs its seeds, and the script searches for new inputs on demand.
 
 ## Community
 

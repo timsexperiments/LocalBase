@@ -3,8 +3,8 @@
 // annotations), from the catalog data in internal/catalog/data and the memory
 // measurements in internal/memory/measurements.json.
 //
-//	cd go && go run ./tools/catalog-feed         # write both feeds
-//	cd go && go run ./tools/catalog-feed -check  # exit 1 if either is out of date
+//	go run ./tools/catalog-feed         # write both feeds
+//	go run ./tools/catalog-feed -check  # exit 1 if either is out of date
 package main
 
 import (
@@ -18,6 +18,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 const module = "github.com/timsexperiments/LocalBase/go"
@@ -39,7 +40,7 @@ func moduleDir() (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("run from inside the go/ module (no go.mod for " + module + " above the working directory)")
+			return "", errors.New("run from inside the module (no go.mod for " + module + " above the working directory)")
 		}
 		dir = parent
 	}
@@ -55,11 +56,15 @@ func main() {
 }
 
 func run(check bool) error {
-	dir, err := moduleDir()
-	if err != nil {
+	if _, err := moduleDir(); err != nil {
 		return err
 	}
-	root := filepath.Dir(dir)
+	// The feeds are at the repository's top (catalog/), wherever the module sits in it.
+	var f rootFailure
+	root := testutil.RepoRoot(&f)
+	if f.err != nil {
+		return f.err
+	}
 	v1, v2, err := catalog.RenderFeeds(memory.MeasurementsJSON())
 	if err != nil {
 		return err
@@ -73,7 +78,7 @@ func run(check bool) error {
 		if check {
 			current, _ := os.ReadFile(path)
 			if !bytes.Equal(current, o.body) {
-				return fmt.Errorf("%s is out of date. Run `cd go && go run ./tools/catalog-feed`.", o.rel)
+				return fmt.Errorf("%s is out of date. Run `go run ./tools/catalog-feed`.", o.rel)
 			}
 			continue
 		}
@@ -84,3 +89,10 @@ func run(check bool) error {
 	}
 	return nil
 }
+
+// rootFailure is testutil.Fataler for a command: the failure becomes run's error.
+type rootFailure struct{ err error }
+
+func (f *rootFailure) Helper() {}
+
+func (f *rootFailure) Fatalf(format string, args ...any) { f.err = fmt.Errorf(format, args...) }

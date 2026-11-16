@@ -1,6 +1,6 @@
 // Command localbase is the LocalBase gateway and CLI, installed as
 // `local-base`. Commands follow the TypeScript CLI's names, options and JSON
-// envelopes; see go/DESIGN.md §5.
+// envelopes; see docs/DESIGN.md §5.
 package main
 
 import (
