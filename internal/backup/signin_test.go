@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // crafted makes a backup of a real root, with changes made to one file in it, and returns the backup.

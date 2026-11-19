@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/usage"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // plantUsage writes rows the way a gateway would, then lets go of the database.

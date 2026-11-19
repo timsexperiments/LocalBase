@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/obs"
 )
 
 // Export limits (TS otel.ts).

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // When the gateway can't read this computer, the strip's refresh says so, as Running does: the

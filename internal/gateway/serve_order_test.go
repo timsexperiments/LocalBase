@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // requestLog is a gateway whose log a test reads, one JSON record per line.

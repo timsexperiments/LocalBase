@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // installedRoot is a root where these models are on disk, as sparse files of their real size.

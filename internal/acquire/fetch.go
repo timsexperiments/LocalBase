@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/idle"
-	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/idle"
+	"github.com/timsexperiments/LocalBase/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // Progress reports a transfer. It names files only, never URLs or headers.

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // The optional daily check (DESIGN §33.1). Off by default. GitHub allows 60 unauthenticated

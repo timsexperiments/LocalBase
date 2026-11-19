@@ -19,8 +19,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 const secret = "s3cr3t-header-value-9f1c"

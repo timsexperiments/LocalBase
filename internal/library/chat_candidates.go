@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // InstalledBytes returns the bytes on disk of s's files in modelsDir when every artifact is present at

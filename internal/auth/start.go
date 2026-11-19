@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // NameBindingIssuers gives older email bindings and invitations their sign-in provider

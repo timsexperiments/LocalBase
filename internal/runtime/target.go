@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 
-	"github.com/timsexperiments/LocalBase/go/internal/backends"
-	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/backends"
+	"github.com/timsexperiments/LocalBase/internal/models"
 )
 
 // Target is a model resolved through this device's backend selection: the

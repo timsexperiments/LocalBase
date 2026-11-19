@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // What one import may cost is the owner's to set, and --help says so, including what a

@@ -2,13 +2,13 @@ package models
 
 import (
 	"encoding/json"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/meta"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/meta"
 )
 
 // GET /_localbase/models and /_localbase/models/{id}: catalog facts and

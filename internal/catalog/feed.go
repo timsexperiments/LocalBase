@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/netguard"
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/netguard"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // The remote catalog feed (TS catalog/remote-feed.ts): the project publishes

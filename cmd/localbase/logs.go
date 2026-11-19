@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 var requestIDFlagRe = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)

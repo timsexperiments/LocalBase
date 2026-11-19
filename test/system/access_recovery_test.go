@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // The CLI is the break-glass path around the API's lockout rules (DESIGN

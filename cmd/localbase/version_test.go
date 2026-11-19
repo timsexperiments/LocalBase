@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/version"
+	"github.com/timsexperiments/LocalBase/internal/version"
 )
 
-const versionPkg = "github.com/timsexperiments/LocalBase/go/internal/version"
+const versionPkg = "github.com/timsexperiments/LocalBase/internal/version"
 
 // buildStamped builds this command with the release flags (scripts/build.sh).
 func buildStamped(t *testing.T, out string) {

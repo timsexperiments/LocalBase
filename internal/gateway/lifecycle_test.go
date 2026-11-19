@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 // New starts the run janitor, and Close stops it: a gateway that is built and dropped leaves the

@@ -9,15 +9,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/hub"
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/meta"
-	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/hub"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/meta"
+	"github.com/timsexperiments/LocalBase/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
 )
 
 // models search | add hf: | remove-entry (TS models/commands/hf.ts).

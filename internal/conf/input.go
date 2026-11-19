@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // Input is what configure was given on the command line, apart from the --config file: each option

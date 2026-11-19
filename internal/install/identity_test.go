@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // countHashes is a hash for verifyWith and Options that counts the full hashes it makes.

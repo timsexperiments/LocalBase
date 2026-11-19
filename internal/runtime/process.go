@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/acquire"
-	"github.com/timsexperiments/LocalBase/go/internal/childenv"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/internal/acquire"
+	"github.com/timsexperiments/LocalBase/internal/childenv"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/otlp"
 )
 
 // Process is one supervised backend. It runs in its own process group so a

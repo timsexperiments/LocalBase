@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/lease"
 )
 
 // A restore that's really running is named as such, with the root quoted. A root's path can hold a control

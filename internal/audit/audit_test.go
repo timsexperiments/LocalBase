@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // A class is only ever from the short list.

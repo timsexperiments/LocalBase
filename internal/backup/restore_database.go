@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // checkDatabase judges the file before anything runs against it: read-only, with the schema's

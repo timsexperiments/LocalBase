@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/timsexperiments/LocalBase/go/internal/service"
+	"github.com/timsexperiments/LocalBase/internal/service"
 )
 
 func main() {

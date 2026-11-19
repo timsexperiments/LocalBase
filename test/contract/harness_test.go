@@ -23,7 +23,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness"
 )
 
 // TestMain runs the package's tests through the harness, which launches the shared targets

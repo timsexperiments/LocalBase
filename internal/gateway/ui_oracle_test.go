@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
+	"github.com/timsexperiments/LocalBase/internal/gateway/runs"
 )
 
 // oldAllowedUIRoute is allowedUIRoute as it was written by hand, before the route table (wave 2,

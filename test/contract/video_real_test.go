@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // TestVideoReal runs one FastWan text-to-video job at the catalog's

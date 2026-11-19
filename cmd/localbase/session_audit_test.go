@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // sessionEvent is one record of the root's audit log, with the attributes this file's events carry.

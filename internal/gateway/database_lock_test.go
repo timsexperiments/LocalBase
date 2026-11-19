@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // A store's shared lock is how another process knows it's attached. Closing any descriptor on the database

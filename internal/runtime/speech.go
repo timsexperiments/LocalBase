@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/voices"
+	"github.com/timsexperiments/LocalBase/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/voices"
 )
 
 // Speech backends (TS speech-supervisor.ts and the 2026-10-20 CrispASR

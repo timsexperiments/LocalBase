@@ -11,11 +11,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/instance"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/instance"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/usage"
 )
 
 // usageNote is the one line that says what this is, here and on the page (DESIGN §32.1).

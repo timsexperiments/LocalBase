@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 var xmlReplacer = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;")

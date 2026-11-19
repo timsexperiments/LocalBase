@@ -12,8 +12,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // The pinned CLI tests. Each of these compared the Go command line with TS's and tested nothing

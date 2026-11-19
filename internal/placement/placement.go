@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
 )
 
 // Modes (DESIGN §20.1).

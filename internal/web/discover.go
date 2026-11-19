@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/hub"
-	"github.com/timsexperiments/LocalBase/go/internal/meta"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/hub"
+	"github.com/timsexperiments/LocalBase/internal/meta"
 )
 
 // Get models (§15 step 5): Hugging Face discovery over

@@ -16,12 +16,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
-const module = "github.com/timsexperiments/LocalBase/go"
+const module = "github.com/timsexperiments/LocalBase"
 
 // moduleDir is the directory of this module's go.mod, the nearest one at or
 // above the working directory.

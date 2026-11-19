@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
+	"github.com/timsexperiments/LocalBase/internal/uuidv4"
 )
 
 func TestOperationLease(t *testing.T) {

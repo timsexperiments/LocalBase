@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // failWrites makes SQLite refuse an operation on a table, so a write fails on demand.

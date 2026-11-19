@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
 )
 
 // Measurement is a checked-in calibration record (memory-measurements.ts),

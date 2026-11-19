@@ -7,8 +7,8 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/timsexperiments/LocalBase/go/internal/collate"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/collate"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // LoadPolicy returns the stored policy, or nil when none is configured.

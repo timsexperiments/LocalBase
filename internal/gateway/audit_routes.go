@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/obs"
 )
 
 const (

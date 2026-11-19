@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // An added definition is stored as an import; deleting an import takes its definition and its files.

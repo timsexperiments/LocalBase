@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // A temporary key is made with what was asked, expires in a day, and is audited when made and when

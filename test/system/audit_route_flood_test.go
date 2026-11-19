@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // A key that can only manage models hammers a route it may use. Its changes are limited and

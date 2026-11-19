@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/otlp"
 )
 
 // waiter is a request in the LLM's queue.

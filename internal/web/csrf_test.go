@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 const testCSRFSession = "test-session-0123456789abcdefghijklmnop"

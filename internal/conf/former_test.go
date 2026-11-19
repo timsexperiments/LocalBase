@@ -3,7 +3,7 @@ package conf
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // Settings saved by an earlier release that name a former built-in entry,

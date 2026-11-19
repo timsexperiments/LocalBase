@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // TestRetrySemanticsFake is TestRetrySemantics without a real backend, so that
@@ -34,7 +34,7 @@ func TestRetrySemanticsFake(t *testing.T) {
 	}
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	bin := filepath.Join(tmp, "bin")

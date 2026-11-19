@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // recoveringEnv is set for the helper process RecoveringElsewhere starts.

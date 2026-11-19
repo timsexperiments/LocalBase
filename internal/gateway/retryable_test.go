@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/library"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/library"
 )
 
 // retryable checks the answer of a service that can't be reached for now: 503, Retry-After 5,

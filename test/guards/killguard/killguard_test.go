@@ -18,7 +18,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/timsexperiments/LocalBase/go/test/guards/treewalk"
+	"github.com/timsexperiments/LocalBase/test/guards/treewalk"
 )
 
 var byNameOrService = []*regexp.Regexp{

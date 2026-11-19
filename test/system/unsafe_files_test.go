@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // On the real binary: a link planted at the event log stops the gateway, naming the

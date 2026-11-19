@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // launchd opens the stderr path itself, so preparing it must not create or touch

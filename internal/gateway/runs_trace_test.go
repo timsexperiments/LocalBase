@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/otlp"
 )
 
 // A run is traced by the gateway's exporter: the run manager gets the gateway's Otel, and its

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // Today's contract, kept (DESIGN §21): a client that goes away mid-stream

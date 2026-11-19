@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // Each thing done to a model needs its own permission and no other (DESIGN §20.2, §23).

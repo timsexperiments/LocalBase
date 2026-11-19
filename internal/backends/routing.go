@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/models"
 )
 
 // routing is the versioned rule table (routing.json): per platform, the

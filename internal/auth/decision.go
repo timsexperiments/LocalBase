@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // Identity is a verified browser identity.

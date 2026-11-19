@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // The Lab tries the selected media models from the browser: generate an

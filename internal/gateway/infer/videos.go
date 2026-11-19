@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/internal/video"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/mediacheck"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/video"
 )
 
 // /v1/videos (TS video/gateway-handler.ts and the serve wiring): create a

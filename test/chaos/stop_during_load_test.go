@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/lab"
+	"github.com/timsexperiments/LocalBase/test/lab"
 )
 
 // serviceStopLimit is what launchd and systemd give a stopping gateway (ExitTimeOut and

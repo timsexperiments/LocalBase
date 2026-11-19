@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
 )
 
 // A bundle exists to be shared, so it doesn't say who it came from. These attributes name a person,

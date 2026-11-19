@@ -1,4 +1,4 @@
-module github.com/timsexperiments/LocalBase/go
+module github.com/timsexperiments/LocalBase
 
 go 1.26.11
 

@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/install"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/install"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // sd-server video runtimes (TS resolveVideoLaunchPlan, the video supervisor

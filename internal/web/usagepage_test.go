@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 const usageReply = `{"object":"localbase.usage","scope":"self","range":{"from":"2026-10-26T00:00:00Z","to":"2026-11-02T23:00:00Z","step":"hour"},

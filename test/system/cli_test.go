@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // The CLI tests run Go's command line on scratch roots. The pinned ones (golden_test.go) compare

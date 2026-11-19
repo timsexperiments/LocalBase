@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/internal/video"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory/memorytest"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/video"
 )
 
 func refusal(reason string, reserved int64) *memory.AdmissionError {

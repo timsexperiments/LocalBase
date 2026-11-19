@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/structuredoutput"
 )
 
 // DefaultMaxTokens applies when a chat request sets neither max_tokens nor

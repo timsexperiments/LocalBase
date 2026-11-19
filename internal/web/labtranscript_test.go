@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 func TestSubtitleFormats(t *testing.T) {

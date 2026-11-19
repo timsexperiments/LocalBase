@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
 )
 
 // RestoreJournalName is left in a root by a restore that did not finish (DESIGN §34.5).

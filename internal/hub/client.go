@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/netguard"
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/netguard"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 const (

@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
+	"github.com/timsexperiments/LocalBase/internal/service"
 	"net"
 	"strconv"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/cli"
 )
 
 // gatewayListen is the running gateway's address, else the configured one.

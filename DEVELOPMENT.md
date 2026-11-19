@@ -64,9 +64,9 @@ and date; the first three give the Go version too. `/health` stays the number al
 A release stamps these with `-ldflags` (`scripts/build.sh` is the exact command):
 
 ```sh
--X github.com/timsexperiments/LocalBase/go/internal/version.Version=<version>
--X github.com/timsexperiments/LocalBase/go/internal/version.Commit=<full sha>
--X github.com/timsexperiments/LocalBase/go/internal/version.Date=<RFC 3339>
+-X github.com/timsexperiments/LocalBase/internal/version.Version=<version>
+-X github.com/timsexperiments/LocalBase/internal/version.Commit=<full sha>
+-X github.com/timsexperiments/LocalBase/internal/version.Date=<RFC 3339>
 ```
 
 The Go version comes from the toolchain. With `-trimpath -buildvcs=false`,

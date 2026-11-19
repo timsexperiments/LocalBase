@@ -6,7 +6,7 @@ import (
 	goruntime "runtime"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 const gib = int64(1) << 30

@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
-	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // --- control ---------------------------------------------------------------------------

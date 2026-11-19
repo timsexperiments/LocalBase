@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // unloadWait bounds how long an unload waits for in-flight requests, unless Options.UnloadWait

@@ -13,7 +13,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // Managed users (users.ts): invited by email with roles; pending until the

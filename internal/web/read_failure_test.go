@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // A model's page, and the lists, say a read failed with a plain notice, not an error page.

@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/lease"
 )
 
 // `access`: browser sign-in providers, email delivery, the authorization

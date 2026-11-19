@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/install"
+	"github.com/timsexperiments/LocalBase/internal/install"
 )
 
 // What one import can cost (DESIGN §31.3).

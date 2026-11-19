@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/backup"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/backup"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // lockedBuffer is written by a process's copier and read by the test.

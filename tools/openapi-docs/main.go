@@ -17,7 +17,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 const (

@@ -3,8 +3,8 @@ package gateway
 import (
 	"net/http"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
 )
 
 // principal resolves the caller for routes that do their own permission

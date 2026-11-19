@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // fakeAdmin answers the two admin APIs like the gateway, enforcing the

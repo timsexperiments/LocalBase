@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/voices"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/voices"
 )
 
 // cliCreator attributes voices created from the CLI to the local operator.

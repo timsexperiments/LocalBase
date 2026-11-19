@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // Nobody hands out more than they hold (DESIGN §13.6, item 5a). A caller may grant only

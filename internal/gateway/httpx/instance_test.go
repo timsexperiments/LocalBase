@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 func TestTheInstanceTokenMustMatch(t *testing.T) {

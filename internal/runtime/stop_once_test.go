@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory/memorytest"
 )
 
 // gatedHost holds the next Snapshot after arm until open, so a test can stop a

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 type Recorder struct {

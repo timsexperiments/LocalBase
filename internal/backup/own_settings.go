@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // What a root does by itself, with nobody asking: settings whose effect none of the report's other lines

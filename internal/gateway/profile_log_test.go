@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // What the huggingface profile names and can't is said in the gateway's own log, as an event, when an import is

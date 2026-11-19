@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/internal/backends"
 )
 
 // The listing and the start agree: an adapter called startable has a case in a start

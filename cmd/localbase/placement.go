@@ -11,15 +11,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/audit"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/instance"
-	"github.com/timsexperiments/LocalBase/go/internal/library"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/meta"
-	"github.com/timsexperiments/LocalBase/go/internal/placement"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/audit"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/instance"
+	"github.com/timsexperiments/LocalBase/internal/library"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/meta"
+	"github.com/timsexperiments/LocalBase/internal/placement"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // `models placement`: the CPU/GPU placement of one model on this device

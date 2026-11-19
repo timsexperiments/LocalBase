@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // stoppedManager is a Manager standing in for launchctl or systemctl with the service installed and

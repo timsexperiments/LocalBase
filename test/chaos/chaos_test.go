@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/lab"
+	"github.com/timsexperiments/LocalBase/test/lab"
 )
 
 var workspace *lab.Workspace

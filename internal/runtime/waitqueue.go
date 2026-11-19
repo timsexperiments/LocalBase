@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/internal/otlp"
 )
 
 // queued is a request waiting in a runtime's FIFO queue: the LLM's, granted a *Lease, or a

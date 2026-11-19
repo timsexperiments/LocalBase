@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
 )
 
 // When a credential can't be looked up, nothing about it is known. On every route and method, a

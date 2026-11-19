@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 // minPages is how many pages were checked when it was set. A walk that stops reading fails.

@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/acquire"
-	"github.com/timsexperiments/LocalBase/go/internal/audit"
-	"github.com/timsexperiments/LocalBase/go/internal/backends"
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
-	"github.com/timsexperiments/LocalBase/go/internal/library"
-	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/acquire"
+	"github.com/timsexperiments/LocalBase/internal/audit"
+	"github.com/timsexperiments/LocalBase/internal/backends"
+	"github.com/timsexperiments/LocalBase/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/library"
+	"github.com/timsexperiments/LocalBase/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // Model import, backend selection and backend registration pages (DESIGN

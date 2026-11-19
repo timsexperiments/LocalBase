@@ -29,7 +29,7 @@ ldflags() {
   local version pkg
   version=${VERSION:-$(source_version)}
   [ -n "$version" ] || { echo "build: cannot read the version from internal/version/version.go" >&2; exit 1; }
-  pkg=github.com/timsexperiments/LocalBase/go/internal/version
+  pkg=github.com/timsexperiments/LocalBase/internal/version
   echo "-s -w -X $pkg.Version=$version -X $pkg.Commit=$(git -C "$here" rev-parse HEAD) -X $pkg.Date=$(git -C "$here" show -s --format=%cI HEAD)"
 }
 

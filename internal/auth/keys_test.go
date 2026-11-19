@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // What a key shows: its metadata, scopes as a list even when none, the expiry and revocation only

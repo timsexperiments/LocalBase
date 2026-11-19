@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
 )
 
 func TestUpdateRoute(t *testing.T) {

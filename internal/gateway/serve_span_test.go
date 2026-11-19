@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/otlp"
 )
 
 // spanCollector is an OTLP collector for a test: what the gateway's exporter sends, as raw bytes.

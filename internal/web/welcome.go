@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // First run (DESIGN §25): a computer with no chat model goes from hello, to choosing one, to

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // auth's sign-in pages link the app's own style sheet, with the version the UI's pages use, so they

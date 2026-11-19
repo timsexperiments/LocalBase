@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/lab"
+	"github.com/timsexperiments/LocalBase/test/lab"
 )
 
 // rawRequest writes a request by hand, so a test controls exactly what the

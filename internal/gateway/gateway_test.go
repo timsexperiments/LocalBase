@@ -16,14 +16,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 var fakeBinary string
@@ -98,7 +98,7 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 // gateway's own code may still be running after that (testutil.NoLeaksIn).
 func newGateway(t *testing.T, cfg Config) *Server {
 	t.Helper()
-	testutil.NoLeaksIn(t, "LocalBase/go/internal/gateway")
+	testutil.NoLeaksIn(t, "LocalBase/internal/gateway")
 	s := New(cfg)
 	t.Cleanup(func() {
 		if err := s.Close(); err != nil {

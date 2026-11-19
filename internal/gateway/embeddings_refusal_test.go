@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // A chat model cannot produce embeddings. What the backend says about it names its own

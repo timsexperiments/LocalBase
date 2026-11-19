@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // Permissions in canonical order; scope lists are returned in this order.

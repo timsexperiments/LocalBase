@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // hubFixtures serves the Hub responses tools/golden/hub.ts recorded.

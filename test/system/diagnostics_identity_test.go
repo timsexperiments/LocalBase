@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // A real gateway, a real key used for a real request, and the bundle made afterwards.

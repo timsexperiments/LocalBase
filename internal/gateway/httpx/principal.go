@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 type PrincipalKey struct{}

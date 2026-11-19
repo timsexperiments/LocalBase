@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
 )
 
 // MergeMisaki builds CrispASR's Kokoro G2P dictionary from the pinned misaki

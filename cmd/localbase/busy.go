@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // explainError says a busy database in plain words, whichever command met it, and which step met it.

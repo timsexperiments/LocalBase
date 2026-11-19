@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // contractPlan is the launch the TS sd-video-launch-contract checked against the pinned binary:

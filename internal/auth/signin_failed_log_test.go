@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/obs"
 )
 
 // Anyone can start a sign-in and fail it, so what that writes to the log stays small.

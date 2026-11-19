@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // testFeed builds a v2 feed: a community model, an entry for a built-in id

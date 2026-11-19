@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // recorder is an HTTP server that records the path and instance token of every request it gets.

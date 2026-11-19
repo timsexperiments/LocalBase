@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // A real gateway whose log can't rotate: doctor and status say so, in words and in JSON, and the

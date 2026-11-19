@@ -6,15 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
+	"github.com/timsexperiments/LocalBase/internal/service"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
-	"github.com/timsexperiments/LocalBase/go/internal/version"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/internal/version"
 )
 
 // smoke checks that the running gateway serves real inference (#356, #360):

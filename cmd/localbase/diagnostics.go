@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/diagnostics"
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/meta"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/diagnostics"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/meta"
+	"github.com/timsexperiments/LocalBase/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/service"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
 )
 
 func diagnosticsCommand() *cli.Command {

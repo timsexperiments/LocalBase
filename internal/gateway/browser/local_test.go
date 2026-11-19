@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 // TestLocalSessionLoopbackRule and TestLoginLinkRateLimited (gateway/local_test.go) through Access alone,

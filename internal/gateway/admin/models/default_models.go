@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // defaultChatModelsAPI reads and sets the ordered default chat model list

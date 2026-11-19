@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // plant writes rows with foreign keys off, as an edited copy of the database could hold them. In

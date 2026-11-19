@@ -19,7 +19,7 @@ import (
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // Sidecars are the suffixes of every file that belongs with a database. Whatever replaces, removes or

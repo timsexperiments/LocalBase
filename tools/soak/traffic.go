@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/lab"
+	"github.com/timsexperiments/LocalBase/test/lab"
 )
 
 // canary is in every prompt: it must never reach the log.

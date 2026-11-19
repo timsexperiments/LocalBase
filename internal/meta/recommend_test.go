@@ -3,8 +3,8 @@ package meta
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 // The rule's parts, on the built-in catalog: only the kind asked for and only what fits; LLMs largest

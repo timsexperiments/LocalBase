@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
 )
 
 // The published feeds, built from the embedded catalog data (go run

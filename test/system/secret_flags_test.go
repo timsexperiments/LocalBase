@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // A value on a command line can be read by anyone on this computer while the command runs, and stays

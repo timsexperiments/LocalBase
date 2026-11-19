@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
 )
 
 // accessPolicyCommands are the access commands for the authorization policy and its bindings.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness"
 )
 
 // TestClientReplay replays the request shapes of the live clients against

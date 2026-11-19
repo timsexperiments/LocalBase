@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
 )
 
 // Feed annotations (TS catalog/annotations.ts): what the project verified

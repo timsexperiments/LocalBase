@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // scriptBackend completes each job with media of the requested size after

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory/memorytest"
 )
 
 // Close cancels a switch that is waiting for memory to settle, and does not wait out the settle or

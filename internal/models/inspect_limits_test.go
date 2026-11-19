@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 // watchHeap ends the test binary if the heap passes limit, so that a regression

@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // DecodeSpec validates a catalog entry like a built-in one.

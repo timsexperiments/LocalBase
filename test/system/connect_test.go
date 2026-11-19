@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // `local-base connect` (DESIGN §30.5), a Go-only command: the snippet on stdout, so it can

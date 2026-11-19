@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // Characterization, inventory item 5: downloads, against a fake server. It pins

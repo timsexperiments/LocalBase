@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // lineOf writes one record through a fresh Log and returns every line it wrote, each with the log

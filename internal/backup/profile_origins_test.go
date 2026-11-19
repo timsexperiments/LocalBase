@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/acquire"
+	"github.com/timsexperiments/LocalBase/internal/acquire"
 )
 
 // withProfiles is a backup whose profile file says body, as one written by hand, or crafted, could.

@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
 )
 
 // Inspection reads headers and small JSON sidecars only. It never imports,

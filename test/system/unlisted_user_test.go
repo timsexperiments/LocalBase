@@ -13,11 +13,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // TestUnlistedUserRefused holds a deliberate difference from TS (DESIGN §13.6 item 11): a
@@ -39,7 +39,7 @@ func TestUnlistedUserRefused(t *testing.T) {
 	bins := filepath.Join(fsguard.ScratchDir(t), "bin")
 	fsguard.MkdirAll(bins, 0o700)
 	fake := filepath.Join(bins, "llama-server")
-	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	raw, err := os.ReadFile(fake)

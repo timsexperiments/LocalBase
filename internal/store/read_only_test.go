@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // rootFiles says what's in a directory, to the byte.

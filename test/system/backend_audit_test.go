@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // On the host too: registering, removing and choosing a backend are on record, by id. The
@@ -17,7 +17,7 @@ import (
 func TestBackendChangesFromTheCommandLineAreAudited(t *testing.T) {
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}

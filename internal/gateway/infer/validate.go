@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
 )
 
 // Request validation for the JSON inference routes. These port the TS Zod

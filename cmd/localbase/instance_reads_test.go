@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/cli"
 )
 
 // readSitesEnv is a configured root, open, for the read sites' tests.

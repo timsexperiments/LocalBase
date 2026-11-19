@@ -45,7 +45,7 @@ Needs the Go version in [`go.mod`](go.mod).
 
 ```sh
 git clone https://github.com/timsexperiments/LocalBase.git
-cd LocalBase/go
+cd LocalBase
 go build -o local-base ./cmd/localbase
 ./local-base --version
 ```

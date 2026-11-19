@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // fakeGateway is an HTTP server at the address a root's owner.json names, with this test's live

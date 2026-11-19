@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
 )
 
 // --- telemetry ---------------------------------------------------------------------

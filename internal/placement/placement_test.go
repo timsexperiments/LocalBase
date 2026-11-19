@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
 )
 
 const mib = 1 << 20

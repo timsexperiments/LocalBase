@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 var testBody = []byte("the model's bytes, all of them")

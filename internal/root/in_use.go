@@ -3,7 +3,7 @@ package root
 import (
 	"os"
 
-	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/internal/lease"
 )
 
 // InUse reports whether another live process holds this root: a gateway, or a command holding the

@@ -3,7 +3,7 @@ package backup
 import (
 	"sort"
 
-	"github.com/timsexperiments/LocalBase/go/internal/acquire"
+	"github.com/timsexperiments/LocalBase/internal/acquire"
 )
 
 // DownloadCredential is a download profile a backup holds: where its headers will be sent. It never holds a

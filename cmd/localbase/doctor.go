@@ -3,21 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/audit"
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/backup"
-	"github.com/timsexperiments/LocalBase/go/internal/placement"
+	"github.com/timsexperiments/LocalBase/internal/audit"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/backup"
+	"github.com/timsexperiments/LocalBase/internal/placement"
 	"os"
 	"strconv"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/conf"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/meta"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
-	"github.com/timsexperiments/LocalBase/go/internal/version"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/conf"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/meta"
+	"github.com/timsexperiments/LocalBase/internal/obs"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/version"
 )
 
 func doctorCommand() *cli.Command {

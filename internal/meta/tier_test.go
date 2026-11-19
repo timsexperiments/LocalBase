@@ -3,7 +3,7 @@ package meta
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // A tier the catalog recorded wins; else a qualified entry is built-in and anything else is the user's.

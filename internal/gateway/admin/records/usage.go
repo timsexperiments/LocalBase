@@ -9,8 +9,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/usage"
 )
 
 // --- the API --------------------------------------------------------------------------

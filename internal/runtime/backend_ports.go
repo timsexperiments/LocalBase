@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // BackendPorts are where this root's backends listen, as configured. A flag can move the media

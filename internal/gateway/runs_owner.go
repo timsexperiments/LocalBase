@@ -3,7 +3,7 @@ package gateway
 import (
 	"net/http"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
 )
 
 // ownerOf is the run owner for a request's principal.

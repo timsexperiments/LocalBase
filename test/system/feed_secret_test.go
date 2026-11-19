@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 // A signed feed URL carries its secret in the query, under whatever name the signer chose, and the

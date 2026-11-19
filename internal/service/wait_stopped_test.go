@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // The stop is confirmed when the root has no owner and no backend port answers; else it says which

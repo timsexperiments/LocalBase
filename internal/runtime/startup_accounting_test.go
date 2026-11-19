@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory/memorytest"
 )
 
 // A starting model has not shown up in the host's free memory yet, so its demand

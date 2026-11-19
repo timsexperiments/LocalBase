@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
+	"github.com/timsexperiments/LocalBase/internal/uuidv4"
 )
 
 // APIKey is an `api_keys` row. The raw key (`lb_` + 32 base64url chars) is

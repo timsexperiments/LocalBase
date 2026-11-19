@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
+	"github.com/timsexperiments/LocalBase/internal/placement/placementtest"
 )
 
 // What `models list`, `models recommend`, `models delete` and `models add-definition` answer, recorded

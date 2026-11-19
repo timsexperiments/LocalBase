@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/service"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/service"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
 )
 
 func TestRefusals(t *testing.T) {

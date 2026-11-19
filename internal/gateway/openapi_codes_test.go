@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 // errorCodeShape is what a code looks like: `model_not_found`. It leaves out the hyphenated codes

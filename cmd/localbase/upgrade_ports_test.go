@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/store"
 )
 
 // upgrade's survivor check looks for backends where serve put them: --x-port in either form, and

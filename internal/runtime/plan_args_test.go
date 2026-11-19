@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/placement"
+	"github.com/timsexperiments/LocalBase/internal/placement"
 )
 
 func TestAutomaticPlacementOnAMacAddsNoLogLevel(t *testing.T) {

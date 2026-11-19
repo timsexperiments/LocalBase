@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // CatalogEntry is an entry of a backup's catalog.d. A root's catalog trusts those as the person's own, so a

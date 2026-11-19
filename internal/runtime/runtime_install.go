@@ -22,8 +22,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/idle"
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/idle"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // Managed runtime installation (TS manager/binaries.ts ensureBinary): a

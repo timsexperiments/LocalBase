@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/internal/localhttp"
 )
 
 func TestClassifyGateway(t *testing.T) {

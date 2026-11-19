@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/timsexperiments/LocalBase/go/internal/voices"
+	"github.com/timsexperiments/LocalBase/internal/voices"
 )
 
 // My voices: custom speech voice profiles through /_localbase/voices, called

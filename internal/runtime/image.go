@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/childenv"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/childenv"
 )
 
 // sd-server (stable-diffusion.cpp) image runtimes: the TS launcher's

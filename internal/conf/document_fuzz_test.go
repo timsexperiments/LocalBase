@@ -3,7 +3,7 @@ package conf
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/internal/catalog"
 )
 
 // The configuration document is a file a person edits. Plain `go test` runs the seeds, and

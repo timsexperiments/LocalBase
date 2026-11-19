@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // Only a run's event stream gets the no-marker rule, only for GET: the wiring around

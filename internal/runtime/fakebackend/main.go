@@ -47,7 +47,7 @@ import (
 	"regexp"
 
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
 	"net"
 	"net/http"
 	"os"

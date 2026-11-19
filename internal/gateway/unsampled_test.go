@@ -3,8 +3,8 @@ package gateway
 import (
 	"context"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
+	"github.com/timsexperiments/LocalBase/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory/memorytest"
 )
 
 // measured is a host whose processes' footprints are what footprint says.

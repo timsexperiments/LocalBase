@@ -3,7 +3,7 @@ package runs
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
 )
 
 func FuzzRequestModel(f *testing.F) {

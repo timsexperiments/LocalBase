@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
+	"github.com/timsexperiments/LocalBase/internal/uuidv4"
 )
 
 // gatewayOwner is the owner record the TS gateway writes inside its lock

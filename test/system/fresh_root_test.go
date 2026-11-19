@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
-	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/test/harness"
+	"github.com/timsexperiments/LocalBase/test/harness/fsguard"
 )
 
 const (
@@ -64,7 +64,7 @@ func freshRootInit(t *testing.T, e *e2e, tmp string) {
 func TestFreshRootFirstInstall(t *testing.T) {
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	tiny, second := ggufFile(t, "qwen3", nil, 64*1024), ggufFile(t, "qwen3", nil, 32*1024)
@@ -203,7 +203,7 @@ func TestFreshRootFirstInstall(t *testing.T) {
 func TestFreshRootCLIInstall(t *testing.T) {
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	tiny := ggufFile(t, "qwen3", nil, 64*1024)

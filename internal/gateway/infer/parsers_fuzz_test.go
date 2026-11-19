@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
+	"github.com/timsexperiments/LocalBase/internal/mediacheck"
 )
 
 // These feed what a caller or a backend can send to what reads it first. Plain `go test` runs the

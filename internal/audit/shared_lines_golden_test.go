@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/internal/root"
 )
 
 // The command line's lines for the two events the gateway writes too (audit.local-sessions-revoked

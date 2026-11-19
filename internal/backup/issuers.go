@@ -8,7 +8,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // A binding gives a person a role, and it names the sign-in provider that vouches for them. So

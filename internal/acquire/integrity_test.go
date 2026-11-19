@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/models"
 )
 
 // A pinned file already on disk with the right size and the wrong bytes is not the pinned file.

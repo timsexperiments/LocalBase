@@ -19,8 +19,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/models"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // Schema is the definition format version this build reads.

@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/internal/safefile"
 )
 
 // Browser access configuration: <root>/ui-access.json, the TS

@@ -10,8 +10,8 @@ import (
 	"math"
 	"regexp"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
+	"github.com/timsexperiments/LocalBase/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/internal/mediacheck"
 )
 
 // Native video input validation (TS video-input.ts videoGenerationInputSchema):

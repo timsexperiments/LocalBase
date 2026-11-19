@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gguf"
+	"github.com/timsexperiments/LocalBase/internal/gguf"
 )
 
 // Demand is a runtime's memory reservation per pool view.

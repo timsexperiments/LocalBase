@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/internal/backends"
 )
 
 const (

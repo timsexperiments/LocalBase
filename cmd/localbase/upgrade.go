@@ -13,15 +13,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/install"
-	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
-	"github.com/timsexperiments/LocalBase/go/internal/version"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/install"
+	"github.com/timsexperiments/LocalBase/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/service"
+	"github.com/timsexperiments/LocalBase/internal/store"
+	"github.com/timsexperiments/LocalBase/internal/termsafe"
+	"github.com/timsexperiments/LocalBase/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/internal/version"
 )
 
 const (

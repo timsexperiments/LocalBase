@@ -3,8 +3,8 @@ package gateway
 import (
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // What a page reads from the preview is what a request then meets, to the byte, and asking

@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/connect"
+	"github.com/timsexperiments/LocalBase/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/connect"
 )
 
 // Connect an app (DESIGN §30.4): the address, a key in one tap, and each client's

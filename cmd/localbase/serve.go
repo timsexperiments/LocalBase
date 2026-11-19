@@ -4,9 +4,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/gatewayrun"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/internal/cli"
+	"github.com/timsexperiments/LocalBase/internal/gatewayrun"
+	"github.com/timsexperiments/LocalBase/internal/runtime"
 )
 
 func serveCommand() *cli.Command {

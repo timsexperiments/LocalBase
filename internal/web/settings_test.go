@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/internal/auth"
 )
 
 // fakeTokenAPI answers /_localbase/hf-token like the gateway and records

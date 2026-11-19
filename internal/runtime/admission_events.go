@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/internal/memory"
 )
 
 // modalityComponents name each modality's component in reconciler events

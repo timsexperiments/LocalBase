@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/internal/testutil"
 )
 
 // TestMain pins that a test binary whose tests never ask for the shared targets launches none:
