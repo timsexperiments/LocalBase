@@ -70,9 +70,10 @@ jobs:
           grep -Fxq 'GGML_VULKAN:BOOL=ON' build-tts-server/build/CMakeCache.txt
           ldd_output="$(ldd build-tts-server/tts-server 2>&1 || true)"
           printf '%s\n' "$ldd_output"
-          ! grep -q 'not found' <<<"$ldd_output"
+          # A negated command never stops a step under bash -e, so each refusal is an explicit exit.
+          if grep -q 'not found' <<<"$ldd_output"; then echo "tts-server is missing a shared library" >&2; exit 1; fi
           grep -q 'libvulkan.so.1' <<<"$ldd_output"
-          ! grep -Eq 'libggml|libllama' <<<"$ldd_output"
+          if grep -Eq 'libggml|libllama' <<<"$ldd_output"; then echo "tts-server links libggml or libllama dynamically" >&2; exit 1; fi
           strings build-tts-server/tts-server | grep -Fxq '/v1/generate'
       - name: Package and qualify canonical archive
         run: |
@@ -117,8 +118,9 @@ jobs:
           test "$(uname -m)" = arm64
           grep -Fxq 'GGML_NATIVE:BOOL=OFF' build-tts-server/build/CMakeCache.txt
           grep -Fxq 'GGML_METAL:BOOL=ON' build-tts-server/build/CMakeCache.txt
-          otool -L build-tts-server/tts-server
-          ! otool -L build-tts-server/tts-server | grep -Eq 'libggml|libllama'
+          links="$(otool -L build-tts-server/tts-server)"
+          printf '%s\n' "$links"
+          if grep -Eq 'libggml|libllama' <<<"$links"; then echo "tts-server links libggml or libllama dynamically" >&2; exit 1; fi
           strings build-tts-server/tts-server | grep -Fxq '/v1/generate'
       - name: Package canonical archive
         run: |

@@ -73,9 +73,10 @@ jobs:
           grep -Fxq 'SD_VULKAN:BOOL=ON' build-sd-server/build/CMakeCache.txt
           ldd_output="$(ldd build-sd-server/sd-server 2>&1 || true)"
           printf '%s\n' "$ldd_output"
-          ! grep -q 'not found' <<<"$ldd_output"
+          # A negated command never stops a step under bash -e, so each refusal is an explicit exit.
+          if grep -q 'not found' <<<"$ldd_output"; then echo "sd-server is missing a shared library" >&2; exit 1; fi
           grep -q 'libvulkan.so.1' <<<"$ldd_output"
-          ! grep -Eq 'libwebp|libwebm|libggml' <<<"$ldd_output"
+          if grep -Eq 'libwebp|libwebm|libggml' <<<"$ldd_output"; then echo "sd-server links libwebp, libwebm or libggml dynamically" >&2; exit 1; fi
           build-sd-server/sd-server --help >/dev/null
           strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
           strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
@@ -138,7 +139,8 @@ jobs:
           grep -Fxq 'GGML_METAL_EMBED_PRECOMPILED:BOOL=ON' build-sd-server/build/CMakeCache.txt
           otool -l build-sd-server/sd-server | grep -F '__ggml_metalbin' >/dev/null
           strings build-sd-server/sd-server | grep -F 'using precompiled embedded metal library' >/dev/null
-          ! otool -L build-sd-server/sd-server | grep -Eq 'libwebp|libwebm|libggml'
+          links="$(otool -L build-sd-server/sd-server)"
+          if grep -Eq 'libwebp|libwebm|libggml' <<<"$links"; then echo "sd-server links libwebp, libwebm or libggml dynamically" >&2; exit 1; fi
           build-sd-server/sd-server --help >/dev/null
           strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
           strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
