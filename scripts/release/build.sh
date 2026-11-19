@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: TimsExperiments
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Builds and packages Go release archives. Used by .github/workflows/release-go.yml
+# Builds and packages Go release archives. Used by .github/workflows/release.yml
 # and runnable locally; it writes only under OUTPUT.
 #
 #   scripts/release/build.sh binaries  OUTPUT   cross-compile every target

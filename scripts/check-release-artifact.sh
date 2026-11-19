@@ -1,5 +1,5 @@
 #!/bin/bash
-# Checks built release binaries for the upgrade test key (DESIGN §33.5). release-go.yml runs it on
+# Checks built release binaries for the upgrade test key (DESIGN §33.5). release.yml runs it on
 # every binary it builds, after the build and before anything is signed or packaged. The recipe
 # test (cmd's TestReleaseBuildSetsNoTestKey) reads the build scripts; this reads what they made, so
 # it also sees a tag or -X that reached the build some other way, such as the CI environment.

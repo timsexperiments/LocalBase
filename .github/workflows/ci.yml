@@ -1,4 +1,4 @@
-name: Go rewrite
+name: CI
 
 # No paths filter: go-checks is meant to be a required check, and a required check that never
 # starts blocks the merge. The scope job decides instead, and the test jobs skip when nothing of
@@ -59,7 +59,7 @@ jobs:
           fi
           # The Go tree and what it reads, this workflow and its setup action, and what bun-scripts
           # tests: the release and notice scripts, the Kokoro runtime and the Bun manifest.
-          if printf '%s\n' "$files" | grep -qE '^(cmd/|internal/|test/|tools/|go\.mod$|go\.sum$|\.golangci\.yml$|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
+          if printf '%s\n' "$files" | grep -qE '^(cmd/|internal/|test/|tools/|go\.mod$|go\.sum$|\.golangci\.yml$|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/ci\.yml$|\.github/actions/go-setup/)'; then
             echo go=true >> "$GITHUB_OUTPUT"
           else
             echo go=false >> "$GITHUB_OUTPUT"

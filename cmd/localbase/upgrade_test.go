@@ -114,7 +114,7 @@ func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 	}
 	buildScript := filepath.ToSlash(filepath.Join(module, "scripts", "build.sh"))
 	goflagsTags := regexp.MustCompile(`GOFLAGS[^\n]*-tags`)
-	for _, p := range []string{buildScript, "scripts/release/build.sh", ".github/workflows/release-go.yml"} {
+	for _, p := range []string{buildScript, "scripts/release/build.sh", ".github/workflows/release.yml"} {
 		b, err := os.ReadFile(filepath.Join(repo, p))
 		if err != nil {
 			t.Fatalf("the release build's %s: %v", p, err)
@@ -142,13 +142,13 @@ func TestReleaseBuildSetsNoTestKey(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo, check)); err != nil {
 		t.Errorf("the release's artifact check: %v", err)
 	}
-	wf, err := os.ReadFile(filepath.Join(repo, ".github", "workflows", "release-go.yml"))
+	wf, err := os.ReadFile(filepath.Join(repo, ".github", "workflows", "release.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	build, run, keep := strings.Index(string(wf), "scripts/release/build.sh binaries"), strings.Index(string(wf), check+` "$RUNNER_TEMP"/out/bin/*`), strings.Index(string(wf), "name: Keep the binaries")
 	if build < 0 || run < 0 || keep < 0 || !(build < run && run < keep) {
-		t.Errorf("release-go.yml must run %s on every built binary after the build and before keeping them (build %d, check %d, keep %d)", check, build, run, keep)
+		t.Errorf("release.yml must run %s on every built binary after the build and before keeping them (build %d, check %d, keep %d)", check, build, run, keep)
 	}
 }
 

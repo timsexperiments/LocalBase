@@ -432,7 +432,7 @@ func TestTheReleaseShapeCarriesNoTestKey(t *testing.T) {
 	if strings.Contains(symbols("release-unstripped"), "upgrade.testKey") || !strings.Contains(symbols("tagged-unstripped"), "upgrade.testKey") {
 		t.Error("go tool nm: upgrade.testKey should be only in the unstripped tagged build")
 	}
-	// scripts/check-release-artifact.sh, which release-go.yml runs on every binary it builds,
+	// scripts/check-release-artifact.sh, which release.yml runs on every binary it builds,
 	// passes both untagged builds, though each was given the key's -X, and fails both tagged ones,
 	// for the tag and for the key's bytes. It finds the name upgrade.testKey only where it's kept.
 	for name, want := range map[string][]string{

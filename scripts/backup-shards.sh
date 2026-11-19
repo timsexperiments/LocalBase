@@ -1,6 +1,6 @@
 #!/bin/bash
 # Prints the -run pattern for one shard of internal/backup's -race tests, after checking that the
-# shards and BACKUP_FILE_TESTS together run every test in the package exactly once. go.yml's
+# shards and BACKUP_FILE_TESTS together run every test in the package exactly once. ci.yml's
 # backup-race jobs run it; it reads no list of its own, so a new test lands in a shard by itself.
 #
 #   scripts/backup-shards.sh <shard> <count>     shard counts from 0

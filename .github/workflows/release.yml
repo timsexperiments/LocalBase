@@ -11,7 +11,7 @@ on:
       - "packaging/**"
       - "scripts/install.sh"
       - "scripts/release/**"
-      - ".github/workflows/release-go.yml"
+      - ".github/workflows/release.yml"
 
 permissions:
   contents: read
@@ -42,7 +42,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')"
-          if printf '%s\n' "$files" | grep -Eq '^(\.github/workflows/release-go\.yml|scripts/install\.sh|scripts/release/|packaging/)'; then
+          if printf '%s\n' "$files" | grep -Eq '^(\.github/workflows/release\.yml|scripts/install\.sh|scripts/release/|packaging/)'; then
             echo 'runners=["ubuntu-24.04","ubuntu-24.04-arm","macos-15","macos-15-intel"]' >> "$GITHUB_OUTPUT"
           else
             echo 'runners=["ubuntu-24.04","ubuntu-24.04-arm"]' >> "$GITHUB_OUTPUT"

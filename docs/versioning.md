@@ -33,4 +33,4 @@ Security fixes can skip this if keeping the old behaviour would leave people exp
 
 ## Releases
 
-Only the latest release gets fixes. Tags are `vX.Y.Z`, built by `.github/workflows/release-go.yml`. Runtime packages have their own tags, such as `whisper-v0.0.2`, and their own versions.
+Only the latest release gets fixes. Tags are `vX.Y.Z`, built by `.github/workflows/release.yml`. Runtime packages have their own tags, such as `whisper-v0.0.2`, and their own versions.
