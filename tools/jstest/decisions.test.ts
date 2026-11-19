@@ -16,34 +16,34 @@ describe("band", () => {
     expect(band(0.34, 0.33)).toBe("unsure"); // a three-way tie
   });
   test("a model can have its own cuts", () => {
-    BANDS.other = { strong: 0.2, close: 0.05, unsure: 0.1 };
+    (BANDS as Record<string, unknown>).other = { strong: 0.2, close: 0.05, unsure: 0.1 };
     expect(band(0.6, 0.3, "other")).toBe("strong");
-    delete BANDS.other;
+    delete (BANDS as Record<string, unknown>).other;
     expect(band(0.6, 0.3, "other")).toBe("leaning");
   });
 });
 
 describe("readAnswer", () => {
   test("pick one goes from most to least likely", () => {
-    const r = readAnswer({ type: "choice", choice: "b", probabilities: { a: 0.06, b: 0.91, c: 0.03 } });
+    const r = readAnswer({ type: "choice", choice: "b", probabilities: { a: 0.06, b: 0.91, c: 0.03 } })!;
     expect(r.rows.map((x) => x.label)).toEqual(["b", "a", "c"]);
     expect([r.word, r.verdict, r.odds]).toEqual(["Strongly favored", "b", "91%"]);
     expect(r.rows[0].top).toBe(true);
   });
   test("a close call names both", () => {
-    const r = readAnswer({ type: "choice", probabilities: { a: 0.52, b: 0.44, c: 0.04 } });
+    const r = readAnswer({ type: "choice", probabilities: { a: 0.52, b: 0.44, c: 0.04 } })!;
     expect([r.word, r.verdict, r.odds]).toEqual(["Close call", "a or b", "52% and 44%"]);
     expect(needsReview(r)).toBe(true);
   });
   test("yes or no", () => {
-    const r = readAnswer({ type: "noul", noul: 0.2 });
+    const r = readAnswer({ type: "noul", noul: 0.2 })!;
     expect([r.word, r.verdict, r.odds]).toEqual(["Leaning", "No", "80%"]);
     expect(r.rows.map((x) => x.label)).toEqual(["No", "Yes"]);
     expect(needsReview(r)).toBe(false);
   });
   test("a scale keeps its order and takes its names from the legend", () => {
     for (const legend of [["low", "medium", "high"], { 0: "low", 1: "medium", 2: "high" }]) {
-      const r = readAnswer({ type: "score", score: 2, probabilities: { 0: 0.05, 1: 0.1, 2: 0.85 }, legend });
+      const r = readAnswer({ type: "score", score: 2, probabilities: { 0: 0.05, 1: 0.1, 2: 0.85 }, legend })!;
       expect(r.rows.map((x) => x.label)).toEqual(["low", "medium", "high"]);
       expect(r.answer).toBe("high");
       expect(r.rows[2].top).toBe(true);
@@ -59,7 +59,7 @@ describe("readAnswer", () => {
 });
 
 describe("what a read asks of the person", () => {
-  const read = (probabilities) => readAnswer({ type: "choice", probabilities }, "clef-flash-q4_k_m");
+  const read = (probabilities: Record<string, number>) => readAnswer({ type: "choice", probabilities }, "clef-flash-q4_k_m")!;
   test("a close call and an unsure read say to look, and name no rate", () => {
     const close = read({ a: 0.52, b: 0.44, c: 0.04 });
     expect(close.note).toContain("a person’s look");
@@ -80,8 +80,8 @@ const form = (more = {}) => ({ type: "choice", question: "Which?", situation: ""
 
 describe("the request", () => {
   test("each type, exactly what the API takes", () => {
-    expect(buildRequest(form({ situation: " text " }), " text ", "m")).toEqual({ model: "m", state: "text", questions: { answer: { type: "choice", instructions: "Which?", criteria: { a: "first", b: null } } } });
-    expect(buildRequest(form({ type: "score" }), "", "m").questions.answer.criteria).toEqual(["low", "high"]);
+    expect(buildRequest(form({ situation: " text " }), " text ", "m")).toEqual<unknown>({ model: "m", state: "text", questions: { answer: { type: "choice", instructions: "Which?", criteria: { a: "first", b: null } } } });
+    expect((buildRequest(form({ type: "score" }), "", "m").questions.answer as { criteria?: unknown }).criteria).toEqual(["low", "high"]);
     expect(buildRequest(form({ type: "noul" }), "", "m").questions.answer).toEqual({ type: "noul", instructions: "Which?" });
     expect("state" in buildRequest(form(), "  ", "m")).toBe(false);
   });

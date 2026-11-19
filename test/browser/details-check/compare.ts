@@ -1,5 +1,6 @@
 // Compares two test/browser/details-check.sh results. Reports any page where the same <details> lands differently, or where only
 // one browser found it, and any <details> set to display: contents. Exits 1 on any of these.
+export {}; // a module, for the top-level awaits below (Bun already runs it as one)
 const [a, b] = await Promise.all(process.argv.slice(2, 4).map(async (f) => JSON.parse(await Bun.file(f).text())));
 console.log(`A: ${a.version}, ::details-content ${a.supports}\nB: ${b.version}, ::details-content ${b.supports}`);
 let same = 0, diff = 0, fragile = 0;

@@ -18,7 +18,7 @@ const vision = model(["text", "image"]);
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13]);
 const jpeg = new Uint8Array([255, 216, 255, 224, 0, 16]);
 const webp = new Uint8Array([...new TextEncoder().encode("RIFF"), 0, 0, 0, 0, ...new TextEncoder().encode("WEBPVP8 ")]);
-const file = (name: string, bytes: Uint8Array | string, type = "") => new File([bytes], name, { type });
+const file = (name: string, bytes: Uint8Array<ArrayBuffer> | string, type = "") => new File([bytes], name, { type });
 const noIds = (list: any[]) => list.map(({ id, ...rest }) => rest);
 
 export const readCases: [string, () => File[], ReturnType<typeof model>, any[]?, any[]?][] = [

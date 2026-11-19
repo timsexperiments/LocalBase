@@ -12,7 +12,7 @@ type Fake = { url: string; base: string; got: any[]; reply: (m: any) => void; cl
 function fake(answer: (m: any) => any): Fake {
   const got: any[] = [];
   let peer: any;
-  const server = Bun.serve({
+  const server: Bun.Server<undefined> = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
     fetch(req, srv) {

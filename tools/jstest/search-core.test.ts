@@ -3,7 +3,16 @@
 //
 //   bun test tools/jstest
 import { describe, expect, test } from "bun:test";
-import { LIMITS, batches, capPassages, closest, cosine, marks, rank, readFrom, splitText, type EmbedError } from "../../internal/web/static/js/search-core.js";
+import { LIMITS, batches, capPassages, closest, cosine, marks, rank, readFrom, splitText } from "../../internal/web/static/js/search-core.js";
+// search-core.js has no types of its own for these. An EmbedError is described in a comment there; readFrom's
+// options are destructured from a `{}` default, so only sleep (which has a default) is inferred.
+type EmbedError = { status: number; code: string; retryAfter?: number };
+type ReadOptions = {
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
+  onBusy?: (sec: number) => void;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<unknown>;
+};
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
 
@@ -80,12 +89,12 @@ describe("cosine and rank", () => {
     // Query [1, 0]. By cosine: #3 (1), #1 (2/sqrt(4.01) ≈ 0.99875), #2 (0.7071), #0 (0).
     // By dot product #1 (2) would come first, ahead of #3 (0.5).
     const r = rank([1, 0], [[0, 1], [2, 0.1], [1, 1], [0.5, 0]], 4);
-    expect(r.map((x) => x.index)).toEqual([3, 1, 2, 0]);
+    expect(r.map((x: any) => x.index)).toEqual([3, 1, 2, 0]);
     expect(r[1].score).toBeCloseTo(2 / Math.sqrt(4.01), 12);
   });
 
   test("rank keeps the closest k, and ties keep the source's order", () => {
-    expect(rank([1], [[1], [2], [3]], 2).map((x) => x.index)).toEqual([0, 1]);
+    expect(rank([1], [[1], [2], [3]], 2).map((x: any) => x.index)).toEqual([0, 1]);
   });
 
   test("closest gives each passage once, by its best part, and keeps the closest k", () => {
@@ -106,9 +115,9 @@ describe("cosine and rank", () => {
 
   test("marks are relative to the best of this search, named Closer or Less close, and never a percentage", () => {
     const m = marks([{ index: 0, score: 0.9 }, { index: 1, score: 0.8 }, { index: 2, score: 0.5 }]);
-    expect(m.map((x) => x.rel)).toEqual([1, 0.75, 0]);
-    expect(m.map((x) => x.word)).toEqual(["Closer", "Closer", "Less close"]);
-    expect(marks([{ index: 0, score: 0.4 }]).map((x) => x.word)).toEqual(["Closer"]);
+    expect(m.map((x: any) => x.rel)).toEqual([1, 0.75, 0]);
+    expect(m.map((x: any) => x.word)).toEqual(["Closer", "Closer", "Less close"]);
+    expect(marks([{ index: 0, score: 0.4 }]).map((x: any) => x.word)).toEqual(["Closer"]);
   });
 });
 
@@ -139,7 +148,7 @@ describe("readFrom", () => {
     const log: string[][] = [], seen: [number, number][] = [];
     const p = passagesOf(Array.from({ length: 70 }, (_, i) => `passage ${i}`));
     const s = fresh();
-    await readFrom(s, p, fakeEmbed(log), { ...instant, onProgress: (done, total) => seen.push([done, total]) });
+    await readFrom(s, p, fakeEmbed(log), { ...instant, onProgress: (done, total) => seen.push([done, total]) } as ReadOptions);
     expect(log.map((x) => x.length)).toEqual([32, 32, 6]);
     expect(s.entries.map((e) => e.passage)).toEqual(p.map((_, i) => i));
     expect(seen).toEqual([[32, 70], [64, 70], [70, 70]]);
@@ -169,7 +178,7 @@ describe("readFrom", () => {
     const waits: number[] = [], slept: number[] = [];
     const embed = async (inputs: string[]) => { calls++; if (calls === 1) throw { status: 429, code: "inference_queue_full", retryAfter: 2 } satisfies EmbedError; return inputs.map(() => [1]); };
     const s = fresh();
-    await readFrom(s, passagesOf(["a", "b"]), embed, { onBusy: (sec) => waits.push(sec), sleep: async (ms) => void slept.push(ms) });
+    await readFrom(s, passagesOf(["a", "b"]), embed, { onBusy: (sec) => waits.push(sec), sleep: async (ms) => void slept.push(ms) } as ReadOptions);
     expect(waits).toEqual([2]);
     expect(slept).toEqual([2000]);
     expect(s.entries.length).toBe(2);
@@ -189,7 +198,7 @@ describe("readFrom", () => {
   test("a 503 without Retry-After is a failure, not a wait", async () => {
     let calls = 0, waits = 0;
     const embed = async () => { calls++; throw { status: 503, code: "service_unavailable" } satisfies EmbedError; };
-    const err: any = await readFrom(fresh(), passagesOf(["a"]), embed, { ...instant, onBusy: () => waits++ }).catch((e) => e);
+    const err: any = await readFrom(fresh(), passagesOf(["a"]), embed, { ...instant, onBusy: () => waits++ } as ReadOptions).catch((e) => e);
     expect(err.status).toBe(503);
     expect("busy" in err).toBe(false);
     expect([calls, waits]).toEqual([1, 0]);
@@ -207,7 +216,7 @@ describe("readFrom", () => {
     // The batch overflows; its first half ["a", "b"] is read; the cancel comes on the second half.
     const p = passagesOf(["a", "b", "fake:batch c", "d"]);
     const s = fresh();
-    await expect(readFrom(s, p, embed, { ...instant, signal: ctl.signal })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(readFrom(s, p, embed, { ...instant, signal: ctl.signal } as ReadOptions)).rejects.toMatchObject({ name: "AbortError" });
     expect([s.next, s.entries.length, s.skipped.length]).toEqual([0, 0, 0]);
     await readFrom(s, p, embed, instant);
     expect(s.entries.map((e) => [e.passage, e.text])).toEqual([[0, "a"], [1, "b"], [2, "c"], [3, "d"]]);
@@ -224,7 +233,7 @@ describe("readFrom", () => {
     };
     const p = passagesOf(Array.from({ length: 70 }, (_, i) => `p${i}`));
     const s = fresh();
-    await expect(readFrom(s, p, embed, { ...instant, signal: ctl.signal })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(readFrom(s, p, embed, { ...instant, signal: ctl.signal } as ReadOptions)).rejects.toMatchObject({ name: "AbortError" });
     expect(s.next).toBe(32);
     await readFrom(s, p, embed, instant);
     expect(log.map((x) => x[0])).toEqual(["p0", "p32", "p32", "p64"]);

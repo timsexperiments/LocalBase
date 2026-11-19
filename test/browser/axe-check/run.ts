@@ -11,7 +11,7 @@ const evaluate = (expression: string) => evaluateIn(send, expression);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // [name, path, action run in the page before the scan]
-const states: [string, string, string][] = [
+const states: [string, string, string?][] = [
   ["chat", "/app/chat", ""],
   ["welcome", "/app/welcome"],
   ["welcome-choose", "/app/welcome/choose"],

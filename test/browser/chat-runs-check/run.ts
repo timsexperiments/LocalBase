@@ -22,14 +22,14 @@ const [cdpBase, base] = process.argv.slice(2);
 // With its browser gone nothing here can finish: the client stops the run. A failed command reads
 // as the method and Chrome's words run together, as it always has here.
 const { send, ws } = await openPage(cdpBase, { errorText: (method, message) => method + message });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Whether the page fits the width last asked for. Not innerWidth: mobile emulation grows it
 // to fit wide content, so scrollWidth - innerWidth stays 0 on a page that overflows.
 const pageFits = () => `document.documentElement.scrollWidth <= document.documentElement.clientWidth`;
-const ev = (expression) => evaluate(send, expression, (details) => JSON.stringify(details).slice(0, 400));
-const nav = async (path) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
+const ev = (expression: string) => evaluate(send, expression, (details) => JSON.stringify(details).slice(0, 400));
+const nav = async (path: string) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
 const runsNow = () => ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>b.data.map(r=>r.status+":"+r.label))`);
-let fails = 0; const check = (ok, msg) => { console.log((ok ? "ok   " : "FAIL ") + msg); if (!ok) fails++; };
+let fails = 0; const check = (ok: unknown, msg: string) => { console.log((ok ? "ok   " : "FAIL ") + msg); if (!ok) fails++; };
 await send("Page.enable");
 // A test tab can go hidden behind others, and a hidden page rightly stops polling and taking focus, which
 // then looks like a bug in the page. Focus emulation keeps it active for the whole run.
@@ -43,7 +43,7 @@ await nav("/app/chat");
 await ev(`(() => { const i = document.querySelector("#chat-input"); i.value = "fake:slow 120"; i.dispatchEvent(new Event("input")); document.querySelector("#composer").requestSubmit(); })()`);
 await sleep(1500);
 const conv = await ev(`new URL(location.href).searchParams.get("conversation")`);
-check((await runsNow()).some((s) => s.startsWith("in_progress")), `a run is in progress: ${await runsNow()}`);
+check((await runsNow()).some((s: string) => s.startsWith("in_progress")), `a run is in progress: ${await runsNow()}`);
 await nav("/app/models");
 await sleep(800);
 const pill = await ev(`(() => { const p = document.querySelector("[data-run-pill=dock]"); return { hidden: p.hidden, href: p.getAttribute("href"), text: p.textContent.trim() }; })()`);
@@ -194,11 +194,11 @@ else {
   const failed = await ev(`({ shared: window.__shared, hidden: ${shareBtn}.hidden, said: document.querySelector("dialog.viewer[open] [data-share-status]").textContent })`);
   check(!failed.shared && failed.hidden && /Use Save/.test(failed.said), `a failed encode falls back to Save: ${JSON.stringify(failed)}`);
   await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: addStub.identifier });
-  await send("Page.addScriptToEvaluateOnNewDocument", { source: `navigator.canShare = () => false;` }).then((r) => (globalThis.__noShare = r.identifier));
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: `navigator.canShare = () => false;` }).then((r) => ((globalThis as any).__noShare = r.identifier));
   await nav("/app/studio/image");
   const noShare = await ev(`({ hidden: ${shareBtn}.hidden, note: !document.querySelector("#lab-items dialog.viewer [data-no-share]").hidden })`);
   check(noShare.hidden && noShare.note, `without file sharing the Details say so: ${JSON.stringify(noShare)}`);
-  await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: globalThis.__noShare });
+  await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: (globalThis as any).__noShare });
   await nav("/app/studio/image");
   await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
   // Stop is waited for and then its result is: a fixed wait, with a click that quietly found nothing, read a run that was
@@ -297,8 +297,8 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   console.log("skip decisions (no decision model selected)");
 } else {
   const typeTop = `document.querySelector(".decide-types").getBoundingClientRect().top + scrollY`; // in the page: focus can scroll it
-  const pick = (id) => `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector('#decide-template [data-template="${id}"]').click(); })()`;
-  const situation = (text) => `(() => { const a = document.getElementById("decide-situation"); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new Event("input", { bubbles: true })); })()`;
+  const pick = (id: string) => `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector('#decide-template [data-template="${id}"]').click(); })()`;
+  const situation = (text: string) => `(() => { const a = document.getElementById("decide-situation"); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new Event("input", { bubbles: true })); })()`;
   const decide = `document.querySelector("#decide button[type=submit]").click()`;
   const finished = async () => { for (let i = 0; i < 60 && (await ev(`!document.querySelector("[data-result] .decide-verdict") && !document.querySelector("[data-result] [role=alert]")`)); i++) await sleep(100); };
   const read = `({ word: document.querySelector("[data-result] .decide-word")?.textContent, verdict: document.querySelector("[data-result] .decide-verdict")?.textContent, labels: [...document.querySelectorAll("[data-result] .decide-bar-name")].map((n) => n.textContent), said: document.getElementById("decide-said").textContent })`;
@@ -446,7 +446,7 @@ if (await ev(`!!document.getElementById("decide")`)) {
     await sleep(70);
   };
   const focused = `(() => { const a = document.activeElement, dock = document.querySelector("[data-docked]"); if (!a || a === document.body) return null; const inMain = !!a.closest("#decide") && !a.closest("[data-docked]") && !a.closest("dialog"); if (!inMain) return { skip: true }; const r = a.getBoundingClientRect(), d = dock && !dock.hidden ? dock.getBoundingClientRect().top : innerHeight; return { what: (a.getAttribute("aria-label") || a.textContent || a.placeholder || a.tagName).trim().slice(0, 24), top: Math.round(r.top), bottom: Math.round(r.bottom), dockTop: Math.round(d), clear: r.bottom <= d + 0.5 && r.top >= 0 }; })()`;
-  const tabThrough = async (label) => {
+  const tabThrough = async (label: string) => {
     await ev(`(document.activeElement?.blur(), scrollTo(0, 0))`);
     const covered = []; let seen = 0;
     for (let i = 0; i < 45; i++) {
@@ -478,9 +478,9 @@ await nav("/app/studio/video");
 if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) {
   console.log("skip video (no video model selected)");
 } else {
-  const makeVideo = (text) => `(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(text)}; document.querySelector("form[aria-label='Make a video'] button[type=submit]").click(); })()`;
-  const itemFor = (text) => `[...document.querySelectorAll("#lab-items .lab-item-video")].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
-  const waitItem = async (text, test, ms = 30000) => { const t = Date.now(); let got; while (Date.now() - t < ms) { got = await ev(`(() => { const n = ${itemFor(text)}; return n ? { text: n.textContent.replace(/\\s+/g, " "), active: n.hasAttribute("data-poll"), video: !!n.querySelector("video"), alert: n.querySelector("[role=alert]")?.textContent ?? "" } : null; })()`); if (got && test(got)) return got; await sleep(200); } return got; };
+  const makeVideo = (text: string) => `(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(text)}; document.querySelector("form[aria-label='Make a video'] button[type=submit]").click(); })()`;
+  const itemFor = (text: string) => `[...document.querySelectorAll("#lab-items .lab-item-video")].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+  const waitItem = async (text: string, test: (g: any) => unknown, ms = 30000) => { const t = Date.now(); let got; while (Date.now() - t < ms) { got = await ev(`(() => { const n = ${itemFor(text)}; return n ? { text: n.textContent.replace(/\\s+/g, " "), active: n.hasAttribute("data-poll"), video: !!n.querySelector("video"), alert: n.querySelector("[role=alert]")?.textContent ?? "" } : null; })()`); if (got && test(got)) return got; await sleep(200); } return got; };
 
   const sheet = await ev(`(() => { document.querySelector("[data-video-chip]").click(); const t = document.getElementById("lab-more").textContent.replace(/\\s+/g, " "); document.getElementById("lab-more").close(); return { t, chip: document.querySelector("[data-video-chip]").textContent.replace(/\\s+/g, " ").trim(), model: !!document.querySelector("[data-open-sheet=lab-model]") }; })()`);
   check(/About \d+ seconds, tall/.test(sheet.t) && /up to 10 minutes/.test(sheet.t) && !/fps|frames/.test(sheet.t) && !sheet.model && sheet.chip === "Start from Words", `the profile is in words, and one model needs no chooser: ${sheet.chip}`);
@@ -565,11 +565,11 @@ await nav("/app/studio/speech");
 if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   console.log("skip speech (no speech model selected)");
 } else {
-  const typeScript = (text) => `(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(text)}; p.dispatchEvent(new Event("input", { bubbles: true })); })()`;
+  const typeScript = (text: string) => `(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(text)}; p.dispatchEvent(new Event("input", { bubbles: true })); })()`;
   const sendScript = `document.querySelector("form[aria-label='Make speech'] button[type=submit]").click()`;
   const firstItem = `document.querySelector("#lab-items .lab-item-speech")`;
   const itemState = async () => ev(`(() => { const n = ${firstItem}; return n ? { text: n.textContent.replace(/\\s+/g, " ").trim(), active: n.hasAttribute("data-poll"), parts: n.querySelector("progress")?.max ?? 0, audio: !!n.querySelector("audio"), bars: n.querySelectorAll("[data-wave] .speech-wave-base rect").length } : null; })()`);
-  const until = async (test, ms = 40000) => { const t = Date.now(); let s; while (Date.now() - t < ms) { s = await itemState(); if (s && test(s)) return s; await sleep(150); } return s; };
+  const until = async (test: (s: any) => unknown, ms = 40000) => { const t = Date.now(); let s; while (Date.now() - t < ms) { s = await itemState(); if (s && test(s)) return s; await sleep(150); } return s; };
   const sentence = "fake:slow The harbor was quiet this morning, and the boats were still. ";
 
   // The count, and text is never cut in the field.
@@ -582,14 +582,14 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   await sleep(500);
   check(/Nothing was cut/.test(await ev(`document.querySelector("#lab-result [role=alert]")?.textContent ?? ""`)) && (await ev(`document.getElementById("lab-prompt").value.length`)) === 5001, "over the limit it says so, and the script stays");
 
-  const digitsNote = async (text) => { await ev(typeScript(text)); return ev(`!document.querySelector("[data-digits-note]").hidden`); };
+  const digitsNote = async (text: string) => { await ev(typeScript(text)); return ev(`!document.querySelector("[data-digits-note]").hidden`); };
   check((await digitsNote("1000, 1001, 1002, 1003, 1004")) && !(await digitsNote("Call me on the 12th, about 3 boats and 40 nets, in the morning.")) && !(await digitsNote("")), "the digits note shows only for a script of mostly digits");
 
   // The voice picker.
   await ev(`document.querySelector("[data-open-sheet=lab-voice]").click()`);
   const picker = await ev(`({ open: document.getElementById("lab-voice").open, radios: document.querySelectorAll("#lab-voices input[type=radio]").length, plays: document.querySelectorAll("#lab-voices [data-voice-preview]").length, add: !!document.querySelector("#lab-voices [data-open-sheet=voice-add]") })`);
   check(picker.open && picker.radios > 1 && picker.plays === picker.radios && picker.add, `each voice has a separate Play, and Add a voice is there: ${JSON.stringify(picker)}`);
-  const clickSample = async (i) => { const b = await ev(`(() => { const r = document.querySelectorAll("#lab-voices [data-voice-preview]")[${i}]; r.scrollIntoView({ block: "center" }); const w = r.getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`); for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: b.x, y: b.y, button: "left", clickCount: 1 }); };
+  const clickSample = async (i: number) => { const b = await ev(`(() => { const r = document.querySelectorAll("#lab-voices [data-voice-preview]")[${i}]; r.scrollIntoView({ block: "center" }); const w = r.getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`); for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: b.x, y: b.y, button: "left", clickCount: 1 }); };
   await sleep(400); // the sheet has slid in
   const chosenBefore = await ev(`document.querySelector("#lab-voices input[type=radio]:checked")?.value`);
   await clickSample(0);
@@ -688,9 +688,9 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
 } else {
   const trItem = `document.querySelector("#lab-items .lab-item-transcribe")`;
   const trState = () => ev(`(() => { const n = ${trItem}; return n ? { text: n.textContent.replace(/\\s+/g, " ").trim(), active: n.hasAttribute("data-poll"), times: n.querySelectorAll("[data-seek]").length, audio: !!n.querySelector("audio") } : null; })()`);
-  const trUntil = async (test, ms = 20000) => { const t = Date.now(); let s; while (Date.now() - t < ms) { s = await trState(); if (s && test(s)) return s; await sleep(150); } return s; };
-  const mouse = async (selector) => { const b = await ev(`(() => { const r = document.querySelector(${JSON.stringify(selector)}); r.scrollIntoView({ block: "center" }); const w = r.getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`); for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: b.x, y: b.y, button: "left", clickCount: 1 }); };
-  const setFile = async (path) => { const doc = await send("DOM.getDocument", {}); const input = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "form[data-transcribe] input[type=file]" }); await send("DOM.setFileInputFiles", { nodeId: input.nodeId, files: [path] }); };
+  const trUntil = async (test: (s: any) => unknown, ms = 20000) => { const t = Date.now(); let s; while (Date.now() - t < ms) { s = await trState(); if (s && test(s)) return s; await sleep(150); } return s; };
+  const mouse = async (selector: string) => { const b = await ev(`(() => { const r = document.querySelector(${JSON.stringify(selector)}); r.scrollIntoView({ block: "center" }); const w = r.getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`); for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: b.x, y: b.y, button: "left", clickCount: 1 }); };
+  const setFile = async (path: string) => { const doc = await send("DOM.getDocument", {}); const input = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "form[data-transcribe] input[type=file]" }); await send("DOM.setFileInputFiles", { nodeId: input.nodeId, files: [path] }); };
   const seen = async () => (await ev(`document.querySelectorAll("#lab-items .lab-item-transcribe").length`));
 
   const starts = await ev(`[...document.querySelectorAll("[data-transcribe-start] button")].map((b) => b.textContent.trim())`);
@@ -719,7 +719,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     // At 320 both labels keep to one line: there, "Choose a file" and its icon wrapped inside a half-width button.
     await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
     const startLines = await ev(`[...document.querySelectorAll("[data-record-start], [data-pick-audio]")].map((b) => { const t = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()); if (!t) return 0; const r = document.createRange(); r.selectNodeContents(t); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; })`);
-    check(startLines.length === 2 && startLines.every((n) => n === 1), `at 320, Record and Choose a file each keep their label on one line: ${JSON.stringify(startLines)}`);
+    check(startLines.length === 2 && startLines.every((n: number) => n === 1), `at 320, Record and Choose a file each keep their label on one line: ${JSON.stringify(startLines)}`);
     await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     // A tap on the icon itself, not the button around it.
     await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
@@ -827,7 +827,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe"] });
     await ev(watchNotice);
     await setFile(voiceFile);
-    const onlySend = { panel: await panelUp() };
+    const onlySend: { panel: boolean; notice?: any } = { panel: await panelUp() };
     await sleep(1500);
     onlySend.notice = await ev(noticeSaid);
     await send("Network.setBlockedURLs", { urls: [] });
@@ -838,7 +838,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe", "*/app/session"] });
     await ev(watchNotice);
     await setFile(voiceFile);
-    const both = { panel: await panelUp() };
+    const both: { panel: boolean; notice?: any } = { panel: await panelUp() };
     await sleep(1500);
     both.notice = await ev(noticeSaid);
     await send("Network.setBlockedURLs", { urls: [] });
@@ -846,7 +846,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     await ev(`document.querySelector("[data-keep-drop]")?.click()`);
     // A sign-in that has expired at the edge: the check is redirected, and that is said, even for this form.
     await nav("/app/studio/transcribe");
-    const paused = (e) => { const m = JSON.parse(String(e.data)); if (m.method !== "Fetch.requestPaused") return; const u = m.params.request.url;
+    const paused = (e: MessageEvent) => { const m = JSON.parse(String(e.data)); if (m.method !== "Fetch.requestPaused") return; const u = m.params.request.url;
       if (u.includes("/app/lab/transcribe")) send("Fetch.failRequest", { requestId: m.params.requestId, errorReason: "InternetDisconnected" });
       else if (u.includes("/app/session")) send("Fetch.fulfillRequest", { requestId: m.params.requestId, responseCode: 302, responseHeaders: [{ name: "Location", value: "https://sign-in.example.invalid/" }], body: "" });
       else send("Fetch.continueRequest", { requestId: m.params.requestId }); };
@@ -855,7 +855,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     // Watched as the two above are: a notice that came and went still counts as said.
     await ev(watchNotice);
     await setFile(voiceFile);
-    const expired = { panel: await panelUp() };
+    const expired: { panel: boolean; notice?: any } = { panel: await panelUp() };
     for (let i = 0; i < 30 && !/sign-in expired/.test(await ev(noticeSaid)); i++) await sleep(150);
     expired.notice = await ev(noticeSaid);
     await send("Fetch.disable");
@@ -970,7 +970,7 @@ for (const w of [320, 360, 390, 430, 480, 768]) {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: 844, deviceScaleFactor: 2, mobile: w < 768 });
   await sleep(120);
   const inset = await ev(`[...document.querySelectorAll("#running-live .running-row")].map((li) => { const r = li.getBoundingClientRect(); return [...li.querySelectorAll(".running-actions > *")].map((el) => { const b = el.getBoundingClientRect(); return Math.round(Math.min(b.left - r.left, r.right - b.right, r.bottom - b.bottom)); }); }).flat()`);
-  check(inset.every((n) => n >= 8), `at ${w}, a row's state and action stay inside its padding: ${JSON.stringify(inset)}`);
+  check(inset.every((n: number) => n >= 8), `at ${w}, a row's state and action stay inside its padding: ${JSON.stringify(inset)}`);
   const tallest = await ev(`Math.max(0, ...[...document.querySelectorAll(".running-actions .btn")].map((b) => b.getBoundingClientRect().height))`);
   check(tallest < 50, `at ${w}, Free memory stays on one line: ${tallest}`);
 }
@@ -982,7 +982,7 @@ check(badTargets.length === 0, `Get's targets are all valid selectors: ${JSON.st
 
 // --- Get finds its row for a model with a dot in its id. Stopped before the request, so nothing
 // downloads. The second click plants the old target, to show this check would have caught it.
-const clickGet = (plant) => ev(`(async () => {
+const clickGet = (plant: boolean) => ev(`(async () => {
   const form = [...document.querySelectorAll("form[hx-post='/app/models/get/recipe']")].find((f) => f.querySelector("[name=modelId]").value.includes("."));
   if (!form) return { none: true };
   const id = form.querySelector("[name=modelId]").value;
@@ -1063,7 +1063,7 @@ await nav("/app/studio/image");
 if ((await ev(`document.querySelectorAll(".image-open").length`)) < 2) console.log("skip the viewer (fewer than two pictures)");
 if ((await ev(`document.querySelectorAll(".image-open").length`)) >= 2) {
   const inViewer = `(() => { const d = document.querySelector("dialog.viewer[open]"), st = d.querySelector(".viewer-stage"), b = d.querySelector("[data-view-zoom]"), m = d.querySelector("[data-view-mat]"), img = d.querySelector(".viewer-img"); return { id: d.id, zoomed: st.classList.contains("viewer-zoomed"), wider: st.scrollWidth > st.clientWidth, left: st.scrollLeft, pressed: b.getAttribute("aria-pressed"), label: b.getAttribute("aria-label"), mat: m.getAttribute("aria-pressed"), matLabel: m.getAttribute("aria-label"), ground: getComputedStyle(img).backgroundColor, hint: getComputedStyle(d.querySelector(".viewer-hint")).display }; })()`;
-  const press = async (key, code, vk) => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk }); await sleep(120); };
+  const press = async (key: string, code: string, vk: number) => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk }); await sleep(120); };
   await ev(`try { localStorage.removeItem("localbase.viewer.mat.v1") } catch {}`);
   await nav("/app/studio/image");
   const title = await ev(`(() => { const g = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector(".image-open")), t = g.querySelector(".image-title"), grid = g.querySelector(".image-grid"); return { above: t.getBoundingClientRect().bottom <= grid.getBoundingClientRect().top, font: getComputedStyle(t).fontFamily, keep: !!document.querySelector(".studio-keep") }; })()`);
@@ -1358,8 +1358,8 @@ else {
   const pencil = `document.querySelector("#lab-items > li .result-actions [aria-label='Edit prompt']")`;
   const removeBtn = `document.querySelector("#lab-items > li .result-actions [aria-label='Remove this video']")`;
   const icons = await ev(`[...document.querySelectorAll("#lab-items > li .result-actions .icon-btn")].filter((b) => b.getBoundingClientRect().width > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute("aria-label"), w: Math.round(r.width), h: Math.round(r.height) }; })`);
-  check(icons.length >= 3 && icons.every((i) => i.w >= 44 && i.h >= 44 && i.name) && icons.some((i) => i.name === "Edit prompt"), `the video's icons are 44 px and named: ${JSON.stringify(icons)}`);
-  const centre = async (sel) => ev(`(() => { const r = ${sel}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  check(icons.length >= 3 && icons.every((i: any) => i.w >= 44 && i.h >= 44 && i.name) && icons.some((i: any) => i.name === "Edit prompt"), `the video's icons are 44 px and named: ${JSON.stringify(icons)}`);
+  const centre = async (sel: string) => ev(`(() => { const r = ${sel}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
   const count = `document.querySelectorAll("#lab-items > li").length`;
   const itemsBefore = await ev(count);
   const at = await centre(removeBtn);
@@ -1398,7 +1398,7 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
 // --- Your own message: copy it, or change the newest one. Nothing changes until it's sent.
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/chat");
-const sendText = async (text) => { await ev(`(() => { const p = document.querySelector("#chat-input"); p.value = ${JSON.stringify(text)}; p.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector("[data-send]").click(); })()`); for (let i = 0; i < 60 && !(await ev(`!document.querySelector("[data-send]").hidden && document.querySelectorAll("[data-messages] article").length >= 2 && !document.querySelector("[data-messages] .reply-place")`)); i++) await sleep(100); await sleep(250); };
+const sendText = async (text: string) => { await ev(`(() => { const p = document.querySelector("#chat-input"); p.value = ${JSON.stringify(text)}; p.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector("[data-send]").click(); })()`); for (let i = 0; i < 60 && !(await ev(`!document.querySelector("[data-send]").hidden && document.querySelectorAll("[data-messages] article").length >= 2 && !document.querySelector("[data-messages] .reply-place")`)); i++) await sleep(100); await sleep(250); };
 const talk = `[...document.querySelectorAll("[data-messages] article")].map((a) => a.textContent.replace(/\\s+/g, " ").trim().slice(0, 44))`;
 await sendText("first question");
 await sendText("second question");
@@ -1418,7 +1418,7 @@ await ev(`${editButton}.click()`);
 await sleep(100);
 await sendText("second question, changed");
 const edited = await ev(talk);
-check(edited.length === twoTurns.length && edited.some((t) => t.includes("second question, changed")) && !edited.some((t) => /second question$/.test(t)) && edited.some((t) => t.includes("first question")), `sending replaces that message and its reply, and keeps the earlier ones: ${JSON.stringify(edited).slice(0, 170)}`);
+check(edited.length === twoTurns.length && edited.some((t: string) => t.includes("second question, changed")) && !edited.some((t: string) => /second question$/.test(t)) && edited.some((t: string) => t.includes("first question")), `sending replaces that message and its reply, and keeps the earlier ones: ${JSON.stringify(edited).slice(0, 170)}`);
 await ev(`document.querySelector("[data-new-chat]").click()`);
 await sleep(200);
 
@@ -1440,7 +1440,7 @@ await nav("/app/chat");
 await ev(`document.addEventListener("htmx:beforeRequest", (e) => { if (e.detail.elt?.hasAttribute?.("data-strip")) e.preventDefault(); }, true)`);
 await ev(`(() => { const real = window.fetch; window.__asked = 0; window.__admission = { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 3 }; window.fetch = (u, o) => { if (String(u).endsWith("/admission")) { window.__asked++; return Promise.resolve(new Response(JSON.stringify(window.__admission), { status: 200 })); } return real(u, o); }; })()`);
 const stripSays = `(() => { const s = document.querySelector("[data-strip] .strip"); return { word: s.querySelector("[data-strip-word]").textContent, red: s.classList.contains("strip-short") }; })()`;
-const redraw = async (state, word, free, admission) => { if (admission) await ev(`window.__admission = ${JSON.stringify(admission)}`); await ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; delete s.dataset.refusedHere; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterOnLoad", { detail: { elt: document.querySelector("[data-strip]") } })); document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); })()`); await sleep(150); return ev(stripSays); };
+const redraw = async (state: string, word: string, free: number, admission?: object) => { if (admission) await ev(`window.__admission = ${JSON.stringify(admission)}`); await ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; delete s.dataset.refusedHere; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterOnLoad", { detail: { elt: document.querySelector("[data-strip]") } })); document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); })()`); await sleep(150); return ev(stripSays); };
 await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: { word: "Not enough memory for this model", model: "a-model" } }))`);
 const refusedNow = await ev(stripSays);
 check(refusedNow.word === "Not enough memory for this model" && refusedNow.red, `a refusal for memory says so: ${JSON.stringify(refusedNow)}`);
@@ -1512,8 +1512,8 @@ await ev(`document.querySelector("[data-open-drawer]").click()`);
 await sleep(150);
 const inDrawer = "#chat-drawer";
 const rows = await ev(`[...document.querySelectorAll("${inDrawer} .chat-row")].map((r) => { const more = r.querySelector(".chat-row-more")?.getBoundingClientRect(), nav = r.closest("nav").getBoundingClientRect(); return { text: r.querySelector(".chat-row-title").textContent.slice(0, 20), line: r.querySelector(".chat-row-line")?.textContent.slice(0, 30), h: Math.round(r.querySelector(".chat-row-link").getBoundingClientRect().height), more: more ? Math.round(more.height) : null, inside: !more || (more.left >= nav.left && more.right <= nav.right + 1) }; })`);
-const saved = rows.filter((r) => r.more !== null);
-check(saved.length === 3 && rows.every((r) => r.h >= 44) && saved.every((r) => r.more >= 44 && r.inside) && saved.some((r) => r.line?.includes("A bakery by the bridge")), `each chat says how it ended, with targets of 44 px and its options in view: ${JSON.stringify(rows).slice(0, 360)}`);
+const saved = rows.filter((r: any) => r.more !== null);
+check(saved.length === 3 && rows.every((r: any) => r.h >= 44) && saved.every((r: any) => r.more >= 44 && r.inside) && saved.some((r: any) => r.line?.includes("A bakery by the bridge")), `each chat says how it ended, with targets of 44 px and its options in view: ${JSON.stringify(rows).slice(0, 360)}`);
 check(await ev(`(() => { const n = document.querySelector("${inDrawer} nav"); return n.scrollWidth <= n.clientWidth + 1; })()`), "a long name or word doesn't push the list sideways");
 await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = "BARLEY"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
 await sleep(100);
@@ -1524,7 +1524,7 @@ await sleep(100);
 check(await ev(`document.querySelector("${inDrawer} [data-no-conversations]").textContent === "No conversations match."`), "a search with no result says so");
 await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
 await sleep(100);
-const rowFor = (title) => `[...document.querySelectorAll("${inDrawer} .chat-row")].find((r) => r.querySelector(".chat-row-title").textContent === ${JSON.stringify(title)})`;
+const rowFor = (title: string) => `[...document.querySelectorAll("${inDrawer} .chat-row")].find((r) => r.querySelector(".chat-row-title").textContent === ${JSON.stringify(title)})`;
 await ev(`${rowFor("Soup")}.querySelector(".chat-row-more").click()`);
 await sleep(100);
 check(await ev(`document.getElementById("chat-options").open && document.querySelector("[data-options-title]").textContent === "Soup"`), "a chat's options open over the list");
@@ -1544,7 +1544,7 @@ check(asking.confirm && asking.focus && /this browser/.test(asking.says), `delet
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 300, deviceScaleFactor: 2, mobile: true });
 await sleep(150);
 const reach = await ev(`[...document.querySelectorAll("[data-options-confirm] button")].map((b) => { b.scrollIntoView({ block: "nearest" }); const r = b.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) }; })`);
-check(reach.length === 2 && reach.every((r) => r.top >= 0 && r.bottom <= 300 && r.h >= 44), `at 320 with the keyboard up, the confirm's answers can be reached: ${JSON.stringify(reach)}`);
+check(reach.length === 2 && reach.every((r: any) => r.top >= 0 && r.bottom <= 300 && r.h >= 44), `at 320 with the keyboard up, the confirm's answers can be reached: ${JSON.stringify(reach)}`);
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
 await sleep(150);
 await ev(`document.querySelector("[data-option-keep]").click()`);
