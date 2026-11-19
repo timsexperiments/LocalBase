@@ -14,7 +14,7 @@ cd LocalBase
 make check
 ```
 
-For linting, `make ui` and release rehearsal, `make bootstrap` installs the pinned tools (golangci-lint, gitleaks, syft, Bun, mdBook) into `.cache/tools`, verified by checksum. It needs no sudo and changes nothing outside this checkout.
+For linting, `make ui` and release rehearsal, `make bootstrap` installs the pinned tools (golangci-lint, gitleaks, actionlint, syft, Bun, mdBook) into `.cache/tools`, verified by checksum. It needs no sudo and changes nothing outside this checkout.
 
 The first `make check` downloads Go modules and compiles dependencies. From an empty cache it took about a minute on an Apple Silicon Mac. On Linux, CI runs the same Go checks; `make` itself has only been run on macOS so far, so please report anything that differs.
 
