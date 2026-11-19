@@ -7,7 +7,7 @@
 - [ ] The maintainer signs off #403, and it's squash-merged. See `docs/internals/merge-readiness.md`.
 - [ ] The stack on top is merged: #404, #413-#417 and this PR, and the backend fixes #405, #406, #409 and #411.
 - [ ] Transcription default decided: English, or auto-detect on multilingual models.
-- [ ] The pinned goldens green: go.yml's contract (linux/amd64) and macos-contract jobs. (Until step 7 this was `go-dual`.)
+- [ ] The pinned goldens green: ci.yml's contract (linux/amd64) and macos-contract jobs. (Until step 7 this was `go-dual`.)
 - [ ] Set the date on the `0.2.0` entry in `CHANGELOG.md`, and regenerate notices if dependencies moved: `scripts/release/generate-notices.sh`.
 
 ## Decisions needed from the owner
@@ -82,7 +82,7 @@ gh run list --branch main --limit 5                # everything green
 scripts/build.sh /tmp/lb-check && /tmp/lb-check version
 git tag -a v0.2.0 -m "LocalBase 0.2.0"
 git push origin v0.2.0
-gh run watch "$(gh run list --workflow release-go.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
 ```
 
 The workflow checks the tag matches the source version and that the changelog has an entry. It ends by creating a **draft** release, so nothing is public yet.

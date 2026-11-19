@@ -88,4 +88,4 @@ A detached run still going when a gateway stops comes back as `interrupted`, rea
 
 ## Integrated qualification
 
-The release workflow (`release-go.yml`) builds every target, then installs, verifies and serves each one on a scratch root with `scripts/release/test-installer.sh`. `scripts/release/rehearse.sh` runs the same steps on this machine against local artifacts, and publishes nothing.
+The release workflow (`release.yml`) builds every target, then installs, verifies and serves each one on a scratch root with `scripts/release/test-installer.sh`. `scripts/release/rehearse.sh` runs the same steps on this machine against local artifacts, and publishes nothing.

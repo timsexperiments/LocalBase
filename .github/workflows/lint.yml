@@ -1,12 +1,12 @@
-name: Go lint
+name: Lint
 
 # The Go code owns the config. A missing config fails this job; it never passes without linting.
 on:
   pull_request:
-    paths: ["cmd/**", "internal/**", "test/**", "tools/**", "go.mod", "go.sum", ".golangci.yml", ".github/workflows/go-lint.yml"]
+    paths: ["cmd/**", "internal/**", "test/**", "tools/**", "go.mod", "go.sum", ".golangci.yml", ".github/workflows/lint.yml"]
   push:
     branches: [main]
-    paths: ["cmd/**", "internal/**", "test/**", "tools/**", "go.mod", "go.sum", ".golangci.yml", ".github/workflows/go-lint.yml"]
+    paths: ["cmd/**", "internal/**", "test/**", "tools/**", "go.mod", "go.sum", ".golangci.yml", ".github/workflows/lint.yml"]
   schedule:
     # A new advisory should show up without anyone pushing.
     - cron: "17 6 * * 1"

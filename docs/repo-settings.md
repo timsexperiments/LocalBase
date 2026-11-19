@@ -14,9 +14,9 @@ The `default` ruleset covers the default branch.
 
 - [x] Require a pull request before merging, with squash the only merge method. A rebase merge stamps your profile name as committer, and a merge commit keeps history you may not want on `main`.
 - [x] Block force pushes and deletions. Any history rewrite means lifting this deliberately.
-- [x] Require `go-checks`, from `go.yml`. It passes only when every Go job that should run has passed, and passes when a change doesn't touch the Go tree.
-- [x] Remove the `validate` check from the ruleset when the pull request that deletes the TypeScript `ci.yml` merges (#908). `go-checks` is now the only required check.
-- [ ] After #403 merges, also require `hygiene` and `secrets`. A required check has to exist on `main` first. `release-go.yml` runs only when its paths change, and a required check that doesn't run blocks the merge, so don't require its jobs.
+- [x] Require `go-checks`, from `ci.yml`. It passes only when every Go job that should run has passed, and passes when a change doesn't touch the Go tree.
+- [x] Remove the `validate` check from the ruleset when the pull request that deletes the TypeScript CI workflow (then also named `ci.yml`) merges (#908). `go-checks` is now the only required check.
+- [ ] After #403 merges, also require `hygiene` and `secrets`. A required check has to exist on `main` first. `release.yml` runs only when its paths change, and a required check that doesn't run blocks the merge, so don't require its jobs.
 - [ ] After #403 merges, turn off merge commits and rebase merging in Settings → General, so the options match the ruleset.
 
 ## Release tags
@@ -24,7 +24,7 @@ The `default` ruleset covers the default branch.
 A `v*` tag starts a release, and nothing protects those tags yet.
 
 - [ ] Add a tag ruleset for `refs/tags/v*` that restricts creation, updates and deletion and blocks force pushes, with repository admins able to bypass it. Runtime tags such as `whisper-v0.0.2` don't match.
-- [ ] Consider immutable releases, so published files and their tag can't change. No workflow changes a release after creating it, and `release-go.yml` publishes a draft, so anything added must be in the draft before it's published.
+- [ ] Consider immutable releases, so published files and their tag can't change. No workflow changes a release after creating it, and `release.yml` publishes a draft, so anything added must be in the draft before it's published.
 
 ## Security
 

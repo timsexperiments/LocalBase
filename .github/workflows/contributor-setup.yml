@@ -1,7 +1,7 @@
 name: Contributor setup
 
 # What CONTRIBUTING promises, from a fresh checkout on Linux. Unit tests already run
-# in go.yml, so this runs only when the setup itself changes.
+# in ci.yml, so this runs only when the setup itself changes.
 on:
   pull_request:
     paths:

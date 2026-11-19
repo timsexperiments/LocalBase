@@ -11,16 +11,16 @@ guarded, but named branches aren't. **GAP** nothing automated fails if it breaks
 
 | Mark | Runs | Meaning |
 |---|---|---|
-| (none) | every PR, in `go.yml` | a unit test, or a contract test |
-| **D** | every PR, in `go.yml`, since step 7 | compared Go with TS; now pins Go's results in goldens (R3a), on linux/amd64 and darwin/arm64 (R3b) |
+| (none) | every PR, in `ci.yml` | a unit test, or a contract test |
+| **D** | every PR, in `ci.yml`, since step 7 | compared Go with TS; now pins Go's results in goldens (R3a), on linux/amd64 and darwin/arm64 (R3b) |
 | **R** | only by hand: real models | needs `LOCALBASE_CONTRACT_RUNTIMES` and weights |
 
 ## 1. The biggest gap: CI never compares Go with TS
 
 **Closed by step 7:** TS is retired, go-dual.yml is gone, and the tests that compared the two pin Go's
-results in goldens that go.yml's contract jobs check on every PR. What follows is the record.
+results in goldens that ci.yml's contract jobs check on every PR. What follows is the record.
 
-`go.yml` ran `scripts/contract.sh -args -impl=go`. Every differential and most CLI tests
+`ci.yml` ran `scripts/contract.sh -args -impl=go`. Every differential and most CLI tests
 need TS and are **skipped in CI**. `ci.yml`'s `bun test` runs only on PRs into main and pushes to main. So
 "the dual suite stays green" is currently only true when someone runs it by hand, and
 nothing in CI would stop a PR breaking TS parity, including this cleanup.
@@ -30,7 +30,7 @@ nothing in CI would stop a PR breaking TS parity, including this cleanup.
 - **When:** nightly on a schedule, plus `workflow_dispatch`, plus any PR labelled `dual`.
   Not on every PR: it takes minutes and needs a model file.
 - **What:** `bun install --frozen-lockfile`, then `scripts/contract.sh -args -impl=both`.
-  Keep the failing run's log as an artifact, as `go.yml` does.
+  Keep the failing run's log as an artifact, as `ci.yml` does.
 - **The model:** the TS gateway won't start without its active model's files, so the job
   downloads the pinned `qwen2.5-coder-1.5b-instruct-q4_k_m.gguf` (about 1 GB, public) into
   `actions/cache` and points `LOCALBASE_CONTRACT_MODELS` at it. No inference runs, so it
@@ -313,7 +313,7 @@ Removal is a follow-up PR after retirement, not part of this program.
 
 | Gate | State |
 |---|---|
-| `go vet`, `-race`, gofmt with 1.26 | **Already in `go.yml`,** on macOS and Linux |
+| `go vet`, `-race`, gofmt with 1.26 | **Already in `ci.yml`,** on macOS and Linux |
 | golangci-lint | None. `~/go/bin` has 1.63.4 (built with Go 1.23), too old for this code: the pinned config needs a current release |
 | Coverage report | `scripts/coverage.sh`, this PR |
 | Fuzz tests | **None** |
@@ -326,7 +326,7 @@ Removal is a follow-up PR after retirement, not part of this program.
 ## Reproducing
 
 ```sh
-go test ./... -count=1                          # what go.yml runs, plus -race there
+go test ./... -count=1                          # what ci.yml runs, plus -race there
 LOCALBASE_CONTRACT_MODELS=<models/llm dir> scripts/coverage.sh both
 go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 go run golang.org/x/tools/cmd/deadcode@latest -test ./...

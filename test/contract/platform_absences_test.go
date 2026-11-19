@@ -20,12 +20,12 @@ var platformAbsences = map[string]struct{ absentOn, why, ranBy string }{
 	"Pins": {
 		absentOn: "every platform but darwin/arm64 and linux/amd64 (Intel Macs, Linux on arm64, Windows)",
 		why:      "the pinned tests' goldens are per platform: it changes the catalog's targets, doctor's placement and the service manager (test/harness/golden.go)",
-		ranBy:    "go.yml contract (ubuntu-latest, linux/amd64) on every PR, and go.yml macos-contract (macos-15, Apple Silicon)",
+		ranBy:    "ci.yml contract (ubuntu-latest, linux/amd64) on every PR, and ci.yml macos-contract (macos-15, Apple Silicon)",
 	},
 	"TestRetrySemanticsFake": {
 		absentOn: "Linux, Intel Macs",
 		why:      "whisper's backends need Metal or Vulkan, so the request stops at backend_not_selected and never reaches the start under test",
-		ranBy:    "go.yml macos-contract (macos-15, Apple Silicon)",
+		ranBy:    "ci.yml macos-contract (macos-15, Apple Silicon)",
 	},
 }
 

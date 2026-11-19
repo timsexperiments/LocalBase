@@ -82,7 +82,7 @@ rm -rf ~/.local/share/doc/local-base
 
 ## Signing setup for maintainers
 
-Tagged releases sign and notarize the macOS binaries in `.github/workflows/release-go.yml`. Linux archives aren't signed; they rely on checksums and GitHub attestations. The workflow needs these repository secrets:
+Tagged releases sign and notarize the macOS binaries in `.github/workflows/release.yml`. Linux archives aren't signed; they rely on checksums and GitHub attestations. The workflow needs these repository secrets:
 
 | Secret | What it holds |
 | --- | --- |

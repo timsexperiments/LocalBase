@@ -1,7 +1,7 @@
 name: Go setup
 description: >-
   Go from go.mod, and the build and module caches restored from the newest save on main for this
-  runner, Go version and go.sum. Only go.yml's unit jobs save, on a push to main.
+  runner, Go version and go.sum. Only ci.yml's unit jobs save, on a push to main.
 outputs:
   key:
     description: The cache key a save on main uses (prefix plus the commit).
