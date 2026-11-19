@@ -1,11 +1,17 @@
 # LocalBase in Go: design
 
-Status: draft for review. Branch `rewrite/go`. Nothing here is merged or deployed.
+Status: the design record of the Go gateway, which replaced the TypeScript version and is
+what `main` ships. Sections are added as features land, and earlier ones stay as written.
 
-The TypeScript/Bun implementation on `main` is the specification. It has run in
-production, its tests encode real incidents, and its on-disk data belongs to a
-live install. This rewrite keeps what that history proved necessary and drops
-what only existed because of how the first version grew.
+**Paths are as they were when each section was written.** The Go module was in `go/` until the
+root move, so a `go/…` path in an older section is now the same path at the repository's top
+(`go/internal/store` is `internal/store`), and `go/docs/…` is `docs/internals/…`. A few files
+have moved since; `git log --follow` finds them.
+
+The TypeScript/Bun implementation was the specification while the rewrite was under way. It had
+run in production, its tests encoded real incidents, and its on-disk data belonged to a live
+install. The rewrite kept what that history proved necessary and dropped what only existed
+because of how the first version grew.
 
 ### Section numbers
 
