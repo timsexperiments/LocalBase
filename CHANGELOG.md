@@ -6,6 +6,14 @@ See the [versioning policy](docs/versioning.md) for what is stable before 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **For contributors: the Go code is at the repository's top.** There's no more `cd go`: the module, `cmd/`, `internal/`, `test/`, `tools/` and `scripts/` sit at the root, and the module path is `github.com/timsexperiments/LocalBase`. From the next release on, `go install github.com/timsexperiments/LocalBase/cmd/localbase@latest` builds it. Until that release is tagged, build from a clone with `go build ./cmd/localbase`: `go install` checks the newest tag, v0.1.0, which predates the Go module, and stops there. The developer docs moved with it: `go/docs/` is now `docs/internals/`, and `go/DESIGN.md` is `docs/DESIGN.md`. Old GitHub links into `go/…` no longer resolve.
+
+### Fixed
+
+- **`scripts/build.sh` with an output in a directory that didn't exist** wrote the binary to `/local-base` instead of failing. It happened with DEVELOPMENT's `scripts/build.sh dist/local-base` on a fresh clone. It now creates the directory, and stops if it can't.
+
 ## [0.2.0] - Unreleased
 
 LocalBase is rewritten in Go. It's one static binary with the UI built in, and it takes over an existing 0.1 data directory in place. Rolling back to 0.1.0 is a binary swap; see [upgrade and rollback](docs/upgrade.md).
