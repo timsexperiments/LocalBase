@@ -27,7 +27,7 @@ These are computed by the real admission code on a simulated host, not measured 
 - **8 GiB:** nothing can load with the default reserve.
 - **16 GiB:** an 8 GiB model needs all 16 GiB free, which can't happen on a running system. Running models stop as soon as free memory drops under 8 GiB.
 
-**The default may change.** Options and the analysis are in [`docs/internals/memory-reserve.md`](../docs/internals/memory-reserve.md). No default has changed, and a new one would only reach new data directories.
+**The default may change.** Options and the analysis are in [`docs/internals/memory-reserve.md`](internals/memory-reserve.md). No default has changed, and a new one would only reach new data directories.
 
 ## Help by checking a real Mac
 
