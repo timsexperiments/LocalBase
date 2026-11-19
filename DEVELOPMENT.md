@@ -119,7 +119,7 @@ The TypeScript gateway is retired. Its 0.1.0 binary, on the v0.1.0 release, is t
 | Workflow | Runs |
 | --- | --- |
 | `ci.yml` | Format, vet, race tests (internal/backup in shards), CSS check, the contract and system suites, and the page-script and Bun script tests, as parallel jobs on Linux and macOS; `go-checks` passes only when all of them do |
-| `repo-guards.yml` | Binaries, large files, action pins, permissions and secrets scan |
+| `repo-guards.yml` | Binaries, large files, action pins, permissions, secrets scan, and actionlint over every workflow |
 | `lint.yml` | golangci-lint with `.golangci.yml` |
 | `contributor-setup.yml` | `make bootstrap`, `check`, `ui`, `lint` and `build` from a fresh Linux checkout, when the setup changes |
 | `soak.yml` | One soak cycle nightly on Linux and macOS, and the 30-minute soak plus a race-detector cycle weekly |

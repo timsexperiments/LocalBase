@@ -32,6 +32,25 @@ jobs:
       - name: A job holding the signing key runs nothing else
         run: scripts/check-signing-jobs.sh
 
+  workflows:
+    # actionlint over every workflow, failing on any finding. Its shell checks (shellcheck) caught
+    # seven negated commands that could never fail their release steps (SC2251).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install actionlint
+        # At the version and checksum in scripts/tools.pins.
+        run: LOCALBASE_TOOLS_DIR="$RUNNER_TEMP/tools" scripts/bootstrap.sh actionlint
+      - name: shellcheck is there for actionlint to use
+        # Without it, actionlint skips the shell in run: blocks and still passes.
+        run: shellcheck --version
+      - name: Lint the workflows
+        run: '"$RUNNER_TEMP/tools/bin/actionlint"'
+
   licensing:
     runs-on: ubuntu-latest
     timeout-minutes: 10
