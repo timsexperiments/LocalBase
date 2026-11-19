@@ -57,9 +57,10 @@ jobs:
           else
             echo go=true >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # The Go tree and what it reads, this workflow and its setup action, and what bun-scripts
-          # tests: the release and notice scripts, the Kokoro runtime and the Bun manifest.
-          if printf '%s\n' "$files" | grep -qE '^(cmd/|internal/|test/|tools/|go\.mod$|go\.sum$|\.golangci\.yml$|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|\.github/workflows/ci\.yml$|\.github/actions/go-setup/)'; then
+          # The Go tree and what it reads, this workflow and its setup action, what bun-scripts
+          # tests (the release and notice scripts, the Kokoro runtime and the Bun manifest) and
+          # what tsc checks (tsconfig.tests.json, over test/ and tools/).
+          if printf '%s\n' "$files" | grep -qE '^(cmd/|internal/|test/|tools/|go\.mod$|go\.sum$|\.golangci\.yml$|scripts/|runtimes/|package\.json$|bun\.lock$|tsconfig\.json$|tsconfig\.tests\.json$|\.github/workflows/ci\.yml$|\.github/actions/go-setup/)'; then
             echo go=true >> "$GITHUB_OUTPUT"
           else
             echo go=false >> "$GITHUB_OUTPUT"
@@ -247,6 +248,27 @@ jobs:
       - name: Format
         run: bunx prettier --check scripts
 
+  tsc:
+    # The browser checks, the page tests and the decision tools type-check (tsconfig.tests.json:
+    # test/browser, tools/jstest, tools/decision-*.ts), with tsgo at the version bun.lock pins.
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Typecheck the tests and tools
+        run: bunx tsgo --noEmit -p tsconfig.tests.json
+
   # macOS costs the most: it runs after merge, or on a pull request labelled "macos". It has fewer
   # jobs than Linux, since only five macOS jobs run at once.
 
@@ -349,7 +371,7 @@ jobs:
 
   go-checks:
     # The one check to require: it passes only when every job above that should have run passed.
-    needs: [scope, unit, backup-race, backup-files, contract, small, jstest, bun-scripts, macos-unit, macos-backup-race, macos-contract]
+    needs: [scope, unit, backup-race, backup-files, contract, small, jstest, bun-scripts, tsc, macos-unit, macos-backup-race, macos-contract]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -370,7 +392,7 @@ jobs:
           go=$(jq -r '.scope.outputs.go' <<<"$NEEDS")
           if [ "$go" != true ]; then echo "nothing of the Go tree changed"; exit 0; fi
           if [ "$EVENT" = pull_request ] && [ "$DRAFT" = true ]; then echo "draft: the tests run once it is ready"; exit 0; fi
-          must="unit backup-race backup-files contract small jstest bun-scripts"
+          must="unit backup-race backup-files contract small jstest bun-scripts tsc"
           if [ "$EVENT" != pull_request ] || [ "$MACOS_LABEL" = true ]; then must="$must macos-unit macos-backup-race macos-contract"; fi
           for j in $must; do
             [ "$(result "$j")" = success ] || { echo "$j should have run and passed, but is $(result "$j")"; exit 1; }
