@@ -62,7 +62,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 await send("Page.enable"); await send("Network.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 const go = async (path: string, ms = 1600) => { await send("Page.navigate", { url: ORIGIN + path }); await sleep(ms); };
-const who = () => ev(`fetch("/app/session", { headers: { "x-localbase-ui": "1" } }).then((r) => r.ok ? r.json() : { status: r.status }).then((j) => j.email ?? j.name ?? j.principal?.name ?? JSON.stringify(j).slice(0, 80)).catch((e) => "error " + e)`);
 const signIn = async (p: "alice" | "bob") => { person = p; await go("/app/login", 2200); const page = await ev("location.pathname"); if (page === "/app/login") { await ev(`document.querySelector("a[href*='/app/login'], main a.btn, main button")?.click()`); await sleep(2200); } const sess = await ev(`fetch("/app/session", { headers: { "x-localbase-ui": "1" } }).then((r) => r.text()).catch((e) => String(e))`); note(`signed in as ${p}: ${String(sess).slice(0, 120)}, at ${await ev("location.pathname + location.search")}`); if (!String(sess).includes(p + "@example.com")) { console.log(`STOP not signed in as ${p}, so nothing after this would mean anything. Page: ${String(await ev("document.title + \" :: \" + document.body.innerText.slice(0, 240)")).replace(/\s+/g, " ")}`); process.exit(3); } };
 const signOut = async () => { await go("/app/settings", 1000); const did = await ev(`(() => { const b = document.querySelector("[data-logout]"); if (b) { b.click(); return true; } return false; })()`); await sleep(1500); note(`signed out (${did}): at ${await ev("location.pathname + location.search")}`); };
 const optIn = async () => { await go("/app/settings", 1000); const was = await ev(`document.querySelector("[data-history-toggle]").checked`); if (!was) await ev(`document.querySelector("[data-history-toggle]").click()`); await sleep(200); return was; };
@@ -98,7 +97,7 @@ check(places.length === 1 && places[0][0] === "localbase.runs.places.v2.${aliceK
 await ev(`document.querySelector("[data-stop]:not([hidden])")?.click()`);
 await sleep(600);
 await go(new URL(String(await ev("location.href"))).pathname + "?conversation=" + (await ev(`JSON.parse(localStorage.getItem("localbase.chat.history.v2.${aliceKey}")).find((c) => c.messages.some((m) => m.text.includes("${A}")))?.id`)), 1200);
-const aliceChat = await ev("location.href");
+await ev("location.href");
 const aliceTitle = onTitle;
 note(`tab title for A's chat: ${aliceTitle}`);
 await signOut();

@@ -9,6 +9,7 @@
 //
 // LOCALBASE_CALIBRATE_KEY is optional (a --no-auth gateway needs none). Stops
 // if the gateway reports under 8 GiB of memory available.
+export {}; // a module, for the top-level awaits below (Bun already runs it as one)
 const BASE = process.env.LOCALBASE_CALIBRATE_URL?.replace(/\/+$/, "");
 const MODEL = process.env.LOCALBASE_CALIBRATE_MODEL;
 if (!BASE || !MODEL) {

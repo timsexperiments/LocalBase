@@ -198,7 +198,7 @@ check(copied.button === "Copied" && copied.said === "Copied." && (clip === seven
 rule = () => "hold";
 from = seen.length;
 await ev(`document.querySelectorAll("[data-search-form] input[name=model]")[1].click()`);
-u = await until((x) => held.length === 1);
+u = await until((_x) => held.length === 1);
 check(u.notes.includes("Changing the model reads your text again.") && seen[from]?.model === models[1] && seen[from]?.inputs[0] === seventy[0] && u.results === null, `a new model says it reads the text again, and does, from the start: ${JSON.stringify({ notes: u.notes, model: seen[from]?.model, results: u.results })}`);
 rule = () => "pass";
 release();

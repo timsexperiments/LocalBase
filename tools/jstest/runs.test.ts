@@ -45,6 +45,8 @@ describe("sseParser", () => {
 // runs.response() turns a run's events into a /v1 stream for streamText.
 import { response, endMessage } from "../../internal/web/static/js/runs.js";
 import { streamText } from "../../internal/web/static/js/chat-core.js";
+// runs.js destructures every option without a default, so all six read as required; the calls below pass only some.
+type ResponseArgs = Parameters<typeof response>[0];
 
 const chunk = (text: string) => JSON.stringify({ choices: [{ index: 0, delta: { content: text } }] });
 function fakeGateway(streams: string[][], run: any = null) {
@@ -69,14 +71,14 @@ describe("runs.response", () => {
     fakeGateway([[ev(1, "status", '{"status":"in_progress"}'), ev(2, "chunk", chunk("Hello ")), ev(3, "chunk", chunk("there")), ev(4, "end", '{"status":"completed"}')]]);
     let text = "";
     let ended: any;
-    await streamText(await response({ id: "run_1", after: "", onEnd: (r: any) => (ended = r) }), (t: string) => (text += t));
+    await streamText(await response({ id: "run_1", after: "", onEnd: (r: any) => (ended = r) } as ResponseArgs), (t: string) => (text += t));
     expect(text).toBe("Hello there");
     expect(ended.status).toBe("completed");
   });
   test("a dropped stream resumes from the last event id", async () => {
     const calls = fakeGateway([[ev(1, "chunk", chunk("a"))], [ev(2, "chunk", chunk("b")), ev(3, "end", '{"status":"completed"}')]]);
     let text = "";
-    await streamText(await response({ id: "run_2", after: "" }), (t: string) => (text += t));
+    await streamText(await response({ id: "run_2", after: "" } as ResponseArgs), (t: string) => (text += t));
     expect(text).toBe("ab");
     expect(calls.filter((c) => c.includes("/events"))).toEqual([
       "GET /app/api/_localbase/runs/run_2/events ",
@@ -87,7 +89,7 @@ describe("runs.response", () => {
     fakeGateway([[ev(1, "chunk", chunk("partial")), ev(2, "end", '{"status":"interrupted","reason":"gateway_restart"}')]]);
     let text = "";
     let ended: any;
-    const read = streamText(await response({ id: "run_3", after: "", onEnd: (r: any) => (ended = r) }), (t: string) => (text += t));
+    const read = streamText(await response({ id: "run_3", after: "", onEnd: (r: any) => (ended = r) } as ResponseArgs), (t: string) => (text += t));
     await expect(read).rejects.toThrow("LocalBase restarted before the reply finished.");
     expect(text).toBe("partial");
     expect(ended.reason).toBe("gateway_restart");
@@ -95,7 +97,7 @@ describe("runs.response", () => {
   test("an empty resume after a gateway restart ends with the run's state", async () => {
     fakeGateway([[ev(5, "chunk", chunk("x"))], []], { id: "run_4", status: "interrupted", reason: "gateway_restart", output: { content: "x" } });
     let ended: any;
-    const read = streamText(await response({ id: "run_4", after: "", onEnd: (r: any) => (ended = r) }), () => {});
+    const read = streamText(await response({ id: "run_4", after: "", onEnd: (r: any) => (ended = r) } as ResponseArgs), () => {});
     await expect(read).rejects.toThrow();
     expect(ended).toEqual({ id: "run_4", status: "interrupted", reason: "gateway_restart" });
   });
@@ -110,20 +112,20 @@ describe("snapshot after a gateway restart", () => {
     fakeGateway([[ev(1, "chunk", chunk("Hel")), ev(2, "chunk", chunk("lo"))],
       [ev(3, "snapshot", JSON.stringify({ status: "interrupted", output: { content: "Hello world" } })), ev(4, "end", '{"status":"interrupted","reason":"gateway_restart"}')]]);
     let text = "";
-    await expect(streamText(await response({ id: "run_5", after: "" }), (t: string) => (text += t))).rejects.toThrow();
+    await expect(streamText(await response({ id: "run_5", after: "" } as ResponseArgs), (t: string) => (text += t))).rejects.toThrow();
     expect(text).toBe("Hello world");
   });
   test("a stream ahead of the checkpoint adds nothing", async () => {
     fakeGateway([[ev(1, "chunk", chunk("Hello world, more"))],
       [ev(3, "snapshot", JSON.stringify({ status: "interrupted", output: { content: "Hello world" } })), ev(4, "end", '{"status":"interrupted","reason":"gateway_restart"}')]]);
     let text = "";
-    await expect(streamText(await response({ id: "run_6", after: "" }), (t: string) => (text += t))).rejects.toThrow();
+    await expect(streamText(await response({ id: "run_6", after: "" } as ResponseArgs), (t: string) => (text += t))).rejects.toThrow();
     expect(text).toBe("Hello world, more");
   });
   test("re-attaching from the start gets the whole snapshot", async () => {
     fakeGateway([[ev(1, "snapshot", JSON.stringify({ status: "interrupted", output: { content: "All of it" } })), ev(2, "end", '{"status":"interrupted","reason":"gateway_restart"}')]]);
     let text = "";
-    await expect(streamText(await response({ id: "run_7", after: "" }), (t: string) => (text += t))).rejects.toThrow();
+    await expect(streamText(await response({ id: "run_7", after: "" } as ResponseArgs), (t: string) => (text += t))).rejects.toThrow();
     expect(text).toBe("All of it");
   });
 });
@@ -131,7 +133,7 @@ describe("snapshot after a gateway restart", () => {
 describe("model_unloading", () => {
   test("a run refused while its model unloads fails in plain words", async () => {
     fakeGateway([[ev(1, "error", JSON.stringify({ error: { code: "model_unloading", message: "Model is unloading." } })), ev(2, "end", '{"status":"failed"}')]]);
-    const read = streamText(await response({ id: "run_8", after: "" }), () => {});
+    const read = streamText(await response({ id: "run_8", after: "" } as ResponseArgs), () => {});
     await expect(read).rejects.toThrow("The model’s memory was being freed, so this didn’t run.");
   });
 });

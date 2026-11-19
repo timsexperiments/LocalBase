@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "test/browser/**/*.ts",
+    "tools/jstest/**/*.ts",
+    "tools/decision-*.ts"
+  ]
+}

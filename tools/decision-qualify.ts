@@ -152,7 +152,7 @@ for (const c of scoreCases) {
   rec("three question types in one request", r.status === 200 && !!a?.status?.choice && !!a?.urgency?.probabilities && typeof a?.escalate?.noul === "number", `${r.status}`);
 }
 {
-  const runs = [];
+  const runs: any[] = [];
   for (let i = 0; i < 3; i++) runs.push((await decide(overdueState, invoiceQ)).json?.answers?.status?.probabilities);
   const same = runs.every((p) => p && Object.keys(p).every((k) => Math.abs(p[k] - runs[0][k]) < 1e-6));
   rec("same request repeated 3 times gives identical probabilities", same, JSON.stringify(runs[0]));
