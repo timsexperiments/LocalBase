@@ -60,13 +60,33 @@ func main() {
 	flag.StringVar(&p.chromeVersion, "chrome-version", "", "the pinned Chrome's version")
 	flag.StringVar(&p.axeZip, "axe-archive", "", "the tarball that axe-core came from")
 	flag.StringVar(&p.axeSum, "axe-sha256", "", "the tarball's pinned sha256")
+	verifyOnly := flag.Bool("verify-chrome-only", false, "check the pinned Chrome in -chrome-dir against -chrome-archive and -chrome-sha256, then exit: 0 when it matches, 2 when not (for the other browser checks, such as person-check.sh)")
 	flag.Parse()
+	if *verifyOnly {
+		os.Exit(verifyChromeOnly(p))
+	}
 	_ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, 10)
 	if err := p.verify(*axe); err != nil {
 		fmt.Fprintf(os.Stderr, "e2e: refusing to run what is in the cache: %v\ne2e: remove it, and test/browser/e2e.sh fetches it again\n", err)
 		os.Exit(2)
 	}
 	os.Exit(run(*out, *chrome, *axe, *keep))
+}
+
+// verifyChromeOnly is verifyChrome for a caller that runs the pinned Chrome itself: nothing runs
+// from the cache here, and nothing is fetched. A mismatch is exit 2 with the reason.
+func verifyChromeOnly(p pins) int {
+	if p.chromeDir == "" || p.chromeZip == "" || p.chromeSum == "" {
+		fmt.Fprintln(os.Stderr, "e2e: -verify-chrome-only needs -chrome-dir, -chrome-archive and -chrome-sha256")
+		return 2
+	}
+	files, err := verifyChrome(p.chromeDir, p.chromeZip, p.chromeSum)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "e2e: the pinned Chrome in %s doesn't match its pin: %v\n", p.chromeDir, err)
+		return 2
+	}
+	fmt.Printf("e2e: the pinned Chrome %s in %s matches its pin (%d files)\n", p.chromeVersion, p.chromeDir, files)
+	return 0
 }
 
 // pins are what a fetched browser and axe-core must match. With a Chrome from LBGO_CHROME or from

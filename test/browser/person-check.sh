@@ -9,7 +9,32 @@
 set -eu
 here=$(cd "$(dirname "$0")/../.." && pwd)
 first=${1:-${PERSON_CHECK_PORT:-24650}}
-chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
+chrome=${LBGO_CHROME:-}
+if [ -z "$chrome" ]; then
+  system="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  if [ -x "$system" ]; then
+    chrome=$system
+  else
+    # The pinned Chrome that test/browser/e2e.sh fetched, used only once it matches its pin: e2e's
+    # own check (the archive against its sha256, then every unpacked file against the archive).
+    # Nothing is fetched here, and a mismatch stops the run rather than falling back to anything.
+    pin() { awk -v k="$1" '$1 == k { print $2 }' "$here/test/browser/e2e/pins"; }
+    platform=$(cd "$here" && go env GOOS)-$(cd "$here" && go env GOARCH)
+    version=$(pin chrome-version)
+    sum=$(pin "chrome-$platform-sha256")
+    cache=${LOCALBASE_E2E_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/localbase-e2e}
+    dir=$cache/chrome-$version-$platform
+    if [ -z "$sum" ] || [ ! -d "$dir" ]; then
+      echo "person-check: no Chrome: set LBGO_CHROME, install Chrome, or run test/browser/e2e.sh once to fetch the pinned one" >&2
+      exit 2
+    fi
+    if ! (cd "$here" && go run ./test/browser/e2e -verify-chrome-only -chrome-dir "$dir" -chrome-archive "$dir/chrome.zip" -chrome-sha256 "$sum" -chrome-version "$version"); then
+      echo "person-check: refusing the cached Chrome in $dir: it doesn't match its pin. Remove it, and test/browser/e2e.sh fetches it again" >&2
+      exit 2
+    fi
+    chrome=$dir/$(pin "chrome-$platform-path" | tr '+' ' ')
+  fi
+fi
 work="$here/.cache/person-check"
 profile="$here/.cache/browser-profile-person-check"
 . "$here/test/browser/browser-run.sh"
